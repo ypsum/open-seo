@@ -5,6 +5,10 @@ import { isHostedAuthMode } from "@/lib/auth-mode";
 import { hasOrgPermission } from "@/lib/org-permissions";
 import { resolveHostedContext } from "@/middleware/ensure-user/hosted";
 import type { EnsuredUserContext } from "@/middleware/ensure-user/types";
+import {
+  disabledBillingRouteResponse,
+  isBillingDisabled,
+} from "@/server/billing/billing-disabled";
 
 // Autumn routes any org member may call: balance/customer reads that power
 // credit meters and usage views. Every other route (attach, updateSubscription,
@@ -82,6 +86,17 @@ async function handleAutumnRequest(request: Request) {
       },
       { status: 403 },
     );
+  }
+
+  // Fork patch (ypsum): answer locally instead of proxying to Autumn.
+  if (await isBillingDisabled()) {
+    const body = disabledBillingRouteResponse(route, context.organizationId);
+    return body === undefined
+      ? Response.json(
+          { message: "Billing is disabled.", code: "billing_disabled" },
+          { status: 404 },
+        )
+      : Response.json(body);
   }
 
   return (await loadHandler())(request);

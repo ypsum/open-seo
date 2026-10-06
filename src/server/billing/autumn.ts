@@ -1,5 +1,10 @@
 import type { Autumn } from "autumn-js";
 import { getRequiredEnvValue } from "@/server/lib/runtime-env";
+import {
+  disabledBillingCheck,
+  disabledBillingCustomer,
+  isBillingDisabled,
+} from "@/server/billing/billing-disabled";
 
 let autumnPromise: Promise<Autumn> | undefined;
 
@@ -42,23 +47,46 @@ function loadAutumn(): Promise<Autumn> {
 
 /** Shape-preserving lazy facade over the SDK client: call sites keep the
  *  plain `autumn.check(...)` form. Covers only the methods we use — add a
- *  line here when adopting a new one. */
+ *  line here when adopting a new one.
+ *
+ *  Fork patch (ypsum): with OPENSEO_DISABLE_BILLING=1 every method answers
+ *  locally (unlimited, nothing metered) and the SDK is never loaded. */
 export const autumn = {
-  check: (...args: Parameters<Autumn["check"]>) =>
-    loadAutumn().then((client) => client.check(...args)),
-  track: (...args: Parameters<Autumn["track"]>) =>
-    loadAutumn().then((client) => client.track(...args)),
+  check: async (...args: Parameters<Autumn["check"]>) =>
+    (await isBillingDisabled())
+      ? (disabledBillingCheck(args[0]) as unknown as Awaited<
+          ReturnType<Autumn["check"]>
+        >)
+      : loadAutumn().then((client) => client.check(...args)),
+  track: async (...args: Parameters<Autumn["track"]>) =>
+    (await isBillingDisabled())
+      ? ({} as Awaited<ReturnType<Autumn["track"]>>)
+      : loadAutumn().then((client) => client.track(...args)),
   customers: {
-    getOrCreate: (...args: Parameters<Autumn["customers"]["getOrCreate"]>) =>
-      loadAutumn().then((client) => client.customers.getOrCreate(...args)),
-    get: (...args: Parameters<Autumn["customers"]["get"]>) =>
-      loadAutumn().then((client) => client.customers.get(...args)),
+    getOrCreate: async (
+      ...args: Parameters<Autumn["customers"]["getOrCreate"]>
+    ) =>
+      (await isBillingDisabled())
+        ? (disabledBillingCustomer(args[0].customerId) as unknown as Awaited<
+            ReturnType<Autumn["customers"]["getOrCreate"]>
+          >)
+        : loadAutumn().then((client) => client.customers.getOrCreate(...args)),
+    get: async (...args: Parameters<Autumn["customers"]["get"]>) =>
+      (await isBillingDisabled())
+        ? (disabledBillingCustomer(args[0].customerId) as unknown as Awaited<
+            ReturnType<Autumn["customers"]["get"]>
+          >)
+        : loadAutumn().then((client) => client.customers.get(...args)),
   },
   balances: {
     // Confirms or releases a hold taken by `check({ lock })`. Not in the
     // SDK's fail-open set, so a lost deduction surfaces as an error.
-    finalize: (...args: Parameters<Autumn["balances"]["finalize"]>) =>
-      loadAutumn().then((client) => client.balances.finalize(...args)),
+    finalize: async (...args: Parameters<Autumn["balances"]["finalize"]>) =>
+      (await isBillingDisabled())
+        ? ({ success: true } as Awaited<
+            ReturnType<Autumn["balances"]["finalize"]>
+          >)
+        : loadAutumn().then((client) => client.balances.finalize(...args)),
   },
 };
 

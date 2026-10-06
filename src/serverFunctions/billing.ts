@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import { isBillingDisabled } from "@/server/billing/billing-disabled";
 import { z } from "zod";
 import {
   AUTUMN_SEO_DATA_BALANCE_FEATURE_ID,
@@ -90,6 +91,9 @@ async function fetchAutumnEventsPage(args: {
   offset: number;
   start: number;
 }): Promise<{ list: BillingUsageEvent[]; hasMore: boolean }> {
+  // Fork patch (ypsum): no Autumn, no usage events.
+  if (await isBillingDisabled()) return { list: [], hasMore: false };
+
   const secretKey = await getRequiredEnvValue("AUTUMN_SECRET_KEY");
 
   let response: Response;
