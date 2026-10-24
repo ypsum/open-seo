@@ -13,6 +13,7 @@ import {
   clearLastProjectId,
   getLastProjectId,
 } from "@/client/lib/active-project";
+import { toastInitialAudit } from "@/client/features/projects/initialAuditToast";
 import { archiveProject, updateProject } from "@/serverFunctions/projects";
 import type { ProjectSummary } from "./types";
 
@@ -60,11 +61,18 @@ function GeneralSection({ project }: { project: ProjectSummary }) {
           ...values.market,
         },
       }),
-    onSuccess: async () => {
+    onSuccess: async (saved) => {
       await queryClient.invalidateQueries({
         queryKey: projectsQueryOptions().queryKey,
       });
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboardActivation", project.id],
+      });
+      await queryClient.invalidateQueries({
+        queryKey: ["dashboardOverview", project.id],
+      });
       toast.success("Project updated");
+      toastInitialAudit(saved.initialAudit);
     },
   });
 
@@ -99,6 +107,10 @@ function GeneralSection({ project }: { project: ProjectSummary }) {
             )}
           </form.AppField>
 
+          <p className="text-sm text-muted-foreground">
+            Adding your website starts a 50-page scan with JavaScript rendering.
+            Rendering uses your credits.
+          </p>
           <form.AppField name="domain">
             {(field) => (
               <field.TextField

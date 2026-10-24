@@ -24,6 +24,7 @@ import {
   getLanguageCode,
 } from "@/client/features/keywords/locations";
 import { ProjectMarketFields } from "@/client/features/projects/ProjectMarketFields";
+import { toastInitialAudit } from "@/client/features/projects/initialAuditToast";
 import { createProject } from "@/serverFunctions/projects";
 
 const createProjectSchema = z.object({
@@ -65,6 +66,7 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
       });
       onClose();
       toast.success("Project created");
+      toastInitialAudit(created.initialAudit);
       // Continue setup through the new project’s dashboard.
       void navigate({
         to: "/p/$projectId",
@@ -123,6 +125,10 @@ export function CreateProjectModal({ onClose }: { onClose: () => void }) {
               )}
             </form.AppField>
 
+            <p className="text-sm text-muted-foreground">
+              Adding your website starts a 50-page scan with JavaScript
+              rendering. Rendering uses your credits.
+            </p>
             <form.AppField name="domain">
               {(field) => (
                 <field.TextField

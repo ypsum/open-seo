@@ -1,9 +1,17 @@
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useCustomer } from "autumn-js/react";
 import { useEffect, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import { QueryError } from "@/client/components/QueryState";
 import { StatusScreen } from "@/client/components/StatusScreen";
+import {
+  billingAccountQueryOptions,
+  prefetchBillingAccount,
+} from "@/client/features/billing/billingAccountQuery";
+import {
+  openUpgradeCheckout,
+  prefetchUpgradeCheckout,
+} from "@/client/features/billing/checkout";
 import { PlanPageAccountMenu } from "@/client/features/billing/PlanPageAccountMenu";
 import { PlanOfferCard } from "@/client/features/billing/PlanOfferCard";
 import {
@@ -14,10 +22,8 @@ import { captureClientEvent } from "@/client/lib/posthog";
 import { useSession } from "@/lib/auth-client";
 import { getStandardErrorMessage } from "@/client/lib/error-messages";
 import { getSubscribeRouteState } from "@/client/features/billing/route-state";
-import { getCustomerPlanStatus } from "@/client/features/billing/plan-detection";
 import { normalizeAuthRedirect } from "@/lib/auth-redirect";
 import { useCanManageBilling } from "@/client/features/team/organizationQueries";
-import { AUTUMN_MANAGED_ACCESS_FEATURE_ID } from "@/shared/billing";
 import { SUPPORT_EMAIL } from "@/client/lib/support";
 import { Button } from "@/client/components/ui/button";
 
@@ -29,10 +35,14 @@ const PLAN_FEATURES = [
 ];
 
 // How long the post-checkout "finalizing" screen polls Autumn before giving
-// up and letting the user through anyway.
+// up and letting the user through anyway, and how often it polls.
 const FINALIZING_TIMEOUT_MS = 30_000;
+const FINALIZING_POLL_MS = 1000;
 
 export const Route = createFileRoute("/_authenticated/subscribe")({
+  // The loader fills the module-scoped query client, so keep it out of server
+  // requests: one worker isolate must not cache another account's billing.
+  ssr: false,
   validateSearch: (
     search: Record<string, unknown>,
   ): { upgrade?: true; redirect?: string; checkout?: "success" } => ({
@@ -44,6 +54,16 @@ export const Route = createFileRoute("/_authenticated/subscribe")({
         : undefined,
     checkout: search.checkout === "success" ? "success" : undefined,
   }),
+  loaderDeps: ({ search: { upgrade, checkout } }) => ({ upgrade, checkout }),
+  // Start the billing read alongside the session check, not after it. Upgrade
+  // links outside Billing land here with ?upgrade=true, and hovering one
+  // preloads this route, so the checkout link starts before the click.
+  loader: ({ deps }) => {
+    prefetchBillingAccount();
+    if (deps.upgrade && deps.checkout !== "success") {
+      prefetchUpgradeCheckout();
+    }
+  },
   component: SubscribePage,
 });
 
@@ -56,47 +76,34 @@ function SubscribePage() {
   const [finalizingTimedOut, setFinalizingTimedOut] = useState(false);
   const checkoutCompleted = checkout === "success";
 
-  const hasSession = Boolean(session?.user?.id);
-  const customerQuery = useCustomer({
-    queryOptions: {
-      enabled: hasSession,
-    },
+  const accountQuery = useQuery({
+    ...billingAccountQueryOptions(),
+    // Autumn can lag Stripe by a few seconds after checkout; poll until the
+    // subscription shows up so the just-paid user isn't shown the paywall
+    // again. An interval never cancels a read in flight, unlike refetch().
+    refetchInterval: (query) =>
+      checkoutCompleted &&
+      !finalizingTimedOut &&
+      query.state.data?.planStatus !== "paid"
+        ? FINALIZING_POLL_MS
+        : false,
   });
+  const account = accountQuery.data;
 
   // Checkout is owner-only; other members hitting the paywall are pointed at
   // their organization owner instead of a Subscribe button that would 403.
   const canManageBilling = useCanManageBilling();
 
-  // Read managed access from the already-loaded Autumn customer (local, no API
-  // call) instead of a separate server round-trip.
-  const hasManagedAccess = customerQuery.check({
-    featureId: AUTUMN_MANAGED_ACCESS_FEATURE_ID,
-  }).allowed;
-
-  const planStatus = getCustomerPlanStatus(customerQuery.data);
   const subscribeRouteState = getSubscribeRouteState({
-    hasSession,
-    isCustomerLoading: customerQuery.isLoading,
-    isCustomerError: customerQuery.isError,
-    hasCustomerData: customerQuery.data != null,
-    hasManagedAccess,
-    planStatus,
+    isCustomerLoading: accountQuery.isPending,
+    isCustomerError: accountQuery.isError,
+    hasCustomerData: account !== undefined,
+    hasManagedAccess: account?.hasManagedAccess ?? false,
+    planStatus: account?.planStatus ?? "free",
     isUpgradeFlow: isUpgradeFlow === true,
     checkoutCompleted,
     finalizingTimedOut,
   });
-
-  // Autumn can lag Stripe by a few seconds after checkout; poll until the
-  // subscription shows up so the just-paid user isn't shown the paywall again.
-  const isFinalizing = subscribeRouteState === "finalizing";
-  const { refetch: refetchCustomer } = customerQuery;
-  useEffect(() => {
-    if (!isFinalizing) return;
-    const interval = setInterval(() => {
-      void refetchCustomer();
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [refetchCustomer, isFinalizing]);
 
   // Armed once on landing with checkout=success (not on the finalizing state,
   // which a refetch with no cached data can leave for "loading" and re-enter)
@@ -160,10 +167,10 @@ function SubscribePage() {
     return (
       <StatusScreen logo title="Billing unavailable" size="sm">
         <QueryError
-          error={customerQuery.error}
+          cause={accountQuery.error}
           fallback="We couldn't verify your billing status right now. Please try again."
-          onRetry={() => void customerQuery.refetch()}
-          isRetrying={customerQuery.isFetching}
+          onRetry={() => void accountQuery.refetch()}
+          isRetrying={accountQuery.isFetching}
         />
       </StatusScreen>
     );
@@ -174,15 +181,7 @@ function SubscribePage() {
     setIsAttaching(true);
 
     try {
-      captureClientEvent("billing:checkout_start");
-      const successUrl = new URL(window.location.href);
-      successUrl.searchParams.set("checkout", "success");
-      await customerQuery.attach({
-        planId: BASE_PLAN_OFFER.planId,
-        redirectMode: "always",
-        successUrl: successUrl.toString(),
-        checkoutSessionParams: BASE_PLAN_OFFER.checkoutSessionParams,
-      });
+      await openUpgradeCheckout();
     } catch (err) {
       setError(
         getStandardErrorMessage(

@@ -1,4 +1,3 @@
-import { ErrorState } from "@/client/components/ErrorState";
 import { SkeletonTableRows } from "@/client/components/SkeletonPresets";
 import { Card } from "@/client/components/ui/card";
 import { Skeleton } from "@/client/components/ui/skeleton";
@@ -11,13 +10,8 @@ export function BacklinksLoadingState() {
         <Skeleton className="h-3 w-80" />
       </div>
       <div className="grid grid-cols-1 gap-3 px-4 pb-4 md:grid-cols-2 xl:grid-cols-3">
-        <div className="grid grid-cols-2 gap-x-6 gap-y-5 rounded-lg border border-border p-3 md:col-span-2 xl:col-span-1">
-          {Array.from({ length: 8 }, (_, index) => (
-            <div key={index} className="space-y-2">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-7 w-16" />
-            </div>
-          ))}
+        <div className="rounded-lg border border-border p-3 md:col-span-2 xl:col-span-1">
+          <SkeletonTableRows rows={9} columns={2} />
         </div>
         {Array.from({ length: 2 }, (_, index) => (
           <div
@@ -37,24 +31,5 @@ export function BacklinksLoadingState() {
         </div>
       </div>
     </Card>
-  );
-}
-
-export function BacklinksErrorState({
-  errorMessage,
-  onRetry,
-  isRetrying,
-}: {
-  errorMessage: string | null;
-  onRetry: () => void;
-  isRetrying: boolean;
-}) {
-  return (
-    <ErrorState
-      title="Could not load backlinks"
-      message={errorMessage ?? "Please try again in a moment."}
-      onRetry={onRetry}
-      isRetrying={isRetrying}
-    />
   );
 }

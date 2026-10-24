@@ -10,6 +10,11 @@ import {
   buildKeywordResearchRequest,
   keywordResearchQueryFn,
 } from "@/client/features/keywords/hooks/useKeywordResearchData";
+import {
+  PROMPT_EXPLORER_STALE_TIME_MS,
+  buildPromptExplorerQueryKey,
+  promptExplorerQueryFn,
+} from "@/client/features/ai-search/promptExplorerQuery";
 import { getBacklinksOverview } from "@/serverFunctions/backlinks";
 import { getDomainOverview } from "@/serverFunctions/domain";
 
@@ -181,6 +186,16 @@ function getSearchTabQueryConfig(
             scope: input.scope,
           },
         }),
+    };
+  }
+
+  if (tab.input.type === "prompt") {
+    const input = tab.input;
+    return {
+      queryKey: buildPromptExplorerQueryKey(projectId, input),
+      queryFn: () => promptExplorerQueryFn(projectId, input),
+      staleTime: PROMPT_EXPLORER_STALE_TIME_MS,
+      gcTime: PROMPT_EXPLORER_STALE_TIME_MS,
     };
   }
 

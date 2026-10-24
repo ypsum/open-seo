@@ -50,6 +50,11 @@ describe("auth redirect helpers", () => {
     expect(normalizeAuthRedirect("/path\\..\\evil")).toBe("/");
   });
 
+  it("rejects tab and newline redirects that URL parsers strip into //", () => {
+    expect(normalizeAuthRedirect("/\t/evil.test")).toBe("/");
+    expect(normalizeAuthRedirect("/\n/evil.test")).toBe("/");
+  });
+
   it("builds sign-in links with the redirect query only when needed", () => {
     expect(getSignInHref("/")).toBe("/sign-in");
     expect(getSignInHref("/oauth-consent?client_id=abc")).toBe(

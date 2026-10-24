@@ -1,21 +1,17 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import type { UseQueryResult } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { Sparkles, type LucideIcon } from "lucide-react";
-import { SUBSCRIBE_ROUTE } from "@/shared/billing";
-import type { PlanStatus } from "@/client/features/billing/plan-detection";
-import { GateCard } from "@/client/components/GateCard";
 import { PageHeader } from "@/client/components/PageHeader";
 import { QueryError } from "@/client/components/QueryState";
 import {
-  SkeletonCard,
   SkeletonStatGrid,
   SkeletonTableRows,
 } from "@/client/components/SkeletonPresets";
-import { Badge } from "@/client/components/ui/badge";
-import { Button } from "@/client/components/ui/button";
 import { Card, CardContent } from "@/client/components/ui/card";
 import { getStandardErrorMessage } from "@/client/lib/error-messages";
+import {
+  PaidPlanGate,
+  type PaidPlanGateCopy,
+} from "@/client/features/billing/PaidPlanGate";
 
 /**
  * The frame of Brand Lookup and Prompt Explorer: header, paid-plan gate,
@@ -25,9 +21,11 @@ import { getStandardErrorMessage } from "@/client/lib/error-messages";
 export function ResearchPageShell<TData>({
   title,
   description,
-  planStatus,
+  contained = false,
   gate,
   form,
+  tabs,
+  loadingState,
   query,
   hasActiveQuery,
   errorFallback,
@@ -41,13 +39,14 @@ export function ResearchPageShell<TData>({
 }: {
   title: string;
   description: string;
-  planStatus: "loading" | PlanStatus;
-  gate: {
-    feature: string;
-    description: string;
-    bullets: { icon: LucideIcon; title: string; body: string }[];
-  };
+  /** The route already supplies the page padding and scroll container. */
+  contained?: boolean;
+  gate: PaidPlanGateCopy;
   form: ReactNode;
+  /** Search tabs above the results; absent on pages without tabs. */
+  tabs?: ReactNode;
+  /** A skeleton shaped like this page's results; defaults to a generic one. */
+  loadingState?: ReactNode;
   query: UseQueryResult<TData>;
   hasActiveQuery: boolean;
   errorFallback: string;
@@ -88,74 +87,56 @@ export function ResearchPageShell<TData>({
   const resultData = hasActiveQuery ? query.data : undefined;
 
   return (
-    <div className="overflow-auto px-4 py-4 pb-24 md:px-6 md:py-6 md:pb-8">
-      <div className="mx-auto max-w-7xl space-y-4">
-        <PageHeader
-          title={title}
-          description={description}
-          backLink={resultData && !isLoading ? backLink : undefined}
-        />
-
-        {planStatus === "loading" ? (
-          <SkeletonCard />
-        ) : planStatus === "free" ? (
-          <GateCard
-            className="mx-auto max-w-3xl"
-            badge={
-              <Badge variant="soft">
-                <Sparkles data-icon="inline-start" />
-                Paid plan
-              </Badge>
-            }
-            title={`Unlock ${gate.feature}`}
-            description={<p className="max-w-xl">{gate.description}</p>}
-            actions={
-              <Button
-                size="lg"
-                nativeButton={false}
-                render={
-                  <Link to={SUBSCRIBE_ROUTE} search={{ upgrade: true }} />
-                }
-              >
-                Upgrade
-              </Button>
-            }
-            features={gate.bullets}
+    <div
+      className={
+        contained
+          ? undefined
+          : "overflow-auto px-4 py-4 pb-24 md:px-6 md:py-6 md:pb-8"
+      }
+    >
+      <PaidPlanGate {...gate}>
+        <div className="mx-auto max-w-7xl space-y-4">
+          <PageHeader
+            title={title}
+            description={description}
+            backLink={hasActiveQuery ? backLink : undefined}
           />
-        ) : (
-          <>
-            {form}
 
-            {errorMessage ? (
-              <QueryError
-                cause={query.error}
-                fallback={
-                  resultData
-                    ? `${errorMessage} Showing earlier results.`
-                    : errorMessage
-                }
-                onRetry={() => void query.refetch()}
-                isRetrying={query.isFetching}
-              />
-            ) : null}
+          {form}
 
-            {isLoading ? (
-              <div className="space-y-4">
-                <SkeletonStatGrid count={3} className="lg:grid-cols-3" />
-                <Card>
-                  <CardContent>
-                    <SkeletonTableRows rows={6} columns={3} />
-                  </CardContent>
-                </Card>
-              </div>
-            ) : resultData ? (
-              renderResults(resultData)
-            ) : !errorMessage ? (
-              history
-            ) : null}
-          </>
-        )}
-      </div>
+          {tabs}
+
+          {errorMessage ? (
+            <QueryError
+              cause={query.error}
+              fallback={
+                resultData
+                  ? `${errorMessage} Showing earlier results.`
+                  : errorMessage
+              }
+              onRetry={() => void query.refetch()}
+              isRetrying={query.isFetching}
+            />
+          ) : null}
+
+          {isLoading
+            ? (loadingState ?? (
+                <div className="space-y-4">
+                  <SkeletonStatGrid count={3} className="lg:grid-cols-3" />
+                  <Card>
+                    <CardContent>
+                      <SkeletonTableRows rows={6} columns={3} />
+                    </CardContent>
+                  </Card>
+                </div>
+              ))
+            : resultData
+              ? renderResults(resultData)
+              : !errorMessage
+                ? history
+                : null}
+        </div>
+      </PaidPlanGate>
     </div>
   );
 }

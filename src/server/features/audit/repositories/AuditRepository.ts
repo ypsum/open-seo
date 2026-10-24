@@ -48,6 +48,18 @@ async function createAudit(data: {
   });
 }
 
+/** Records where the crawl really starts, once the workflow has probed the site. */
+async function updateAuditStart(
+  auditId: string,
+  startUrl: string,
+  config: AuditConfig,
+) {
+  await db
+    .update(audits)
+    .set({ startUrl, config: JSON.stringify(config) })
+    .where(eq(audits.id, auditId));
+}
+
 async function updateAuditProgress(
   auditId: string,
   workflowInstanceId: string,
@@ -176,16 +188,13 @@ async function insertCrawledBatch(
       h4Count: page.h4Count,
       h5Count: page.h5Count,
       h6Count: page.h6Count,
-      headingOrderJson: JSON.stringify(page.headingOrder),
       wordCount: page.wordCount,
       contentHash: page.contentHash,
       imagesTotal: page.imagesTotal,
       imagesMissingAlt: page.imagesMissingAlt,
-      imagesJson: JSON.stringify(page.images),
       internalLinkCount: page.links.filter((l) => l.isInternal).length,
       externalLinkCount: page.links.filter((l) => !l.isInternal).length,
       hasStructuredData: page.hasStructuredData,
-      hreflangTagsJson: JSON.stringify(page.hreflangTags),
       isIndexable: page.isIndexable,
       fetchClass: page.fetchClass,
       crawlDepth: page.crawlDepth,
@@ -410,6 +419,7 @@ async function deleteAuditForProject(auditId: string, projectId: string) {
 
 export const AuditRepository = {
   createAudit,
+  updateAuditStart,
   updateAuditProgress,
   completeAudit,
   failAudit,

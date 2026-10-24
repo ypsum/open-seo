@@ -58,7 +58,6 @@ type Props = {
   onWebSearchChange: (value: boolean) => void;
   onCountryChange: (value: WebSearchCountrySelection) => void;
   onSubmit: (event: FormEvent) => void;
-  isLoading: boolean;
   validationError: string | null;
 };
 
@@ -84,7 +83,6 @@ export function PromptExplorerForm({
   onWebSearchChange,
   onCountryChange,
   onSubmit,
-  isLoading,
   validationError,
 }: Props) {
   const toggleModel = (model: PromptExplorerModel) => {
@@ -247,7 +245,6 @@ export function PromptExplorerForm({
             <Button
               type="submit"
               className="px-6"
-              pending={isLoading}
               disabled={supportedModels.length === 0}
             >
               Run {supportedModels.length}{" "}

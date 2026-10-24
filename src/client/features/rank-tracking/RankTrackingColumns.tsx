@@ -1,8 +1,10 @@
 import { useMemo, type MutableRefObject } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
+import { Star } from "lucide-react";
 import { makeSelectionColumn } from "@/client/components/table/DataTable";
 import { ScoreBadge } from "@/client/components/table/ScoreBadge";
 import { Badge } from "@/client/components/ui/badge";
+import { Button } from "@/client/components/ui/button";
 import { SortableHeader } from "@/client/components/table/SortableHeader";
 import type { RankTrackingRow } from "@/types/schemas/rank-tracking";
 import { formatLocationLabel } from "@/shared/keyword-locations";
@@ -94,8 +96,18 @@ const cpcColumn: ColumnDef<RankTrackingRow> = {
   sortUndefined: "last",
 };
 
+// Hidden column. The table always sorts by it first, so pinned keywords stay
+// on top and each group keeps the sort the user picked.
+export const PINNED_COLUMN_ID = "pinned";
+
+const pinnedColumn: ColumnDef<RankTrackingRow> = {
+  id: PINNED_COLUMN_ID,
+  accessorFn: (row) => (row.pinned ? 0 : 1),
+};
+
 function makeKeywordColumn(
   onKeywordClick: (row: RankTrackingRow) => void,
+  onSetPinned: (vars: { trackingKeywordId: string; pinned: boolean }) => void,
 ): ColumnDef<RankTrackingRow> {
   return {
     id: "keyword",
@@ -110,6 +122,15 @@ function makeKeywordColumn(
     ),
     cell: ({ row }) => (
       <div className="flex items-center gap-1.5">
+        <PinButton
+          pinned={row.original.pinned}
+          onClick={() =>
+            onSetPinned({
+              trackingKeywordId: row.original.trackingKeywordId,
+              pinned: !row.original.pinned,
+            })
+          }
+        />
         <button
           type="button"
           className="text-left font-medium decoration-dotted underline-offset-2 hover:underline"
@@ -132,6 +153,31 @@ function makeKeywordColumn(
     ),
     sortingFn: "alphanumeric",
   };
+}
+
+function PinButton({
+  pinned,
+  onClick,
+}: {
+  pinned: boolean;
+  onClick: () => void;
+}) {
+  const label = pinned ? "Unpin keyword" : "Pin keyword to top";
+  return (
+    <Button
+      variant="ghost"
+      size="icon-xs"
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={pinned}
+      title={label}
+      className={
+        pinned ? "text-amber-500 hover:text-amber-600" : "text-muted-foreground"
+      }
+    >
+      <Star className={pinned ? "fill-current" : undefined} />
+    </Button>
+  );
 }
 
 function makeDeviceColumn(
@@ -206,6 +252,7 @@ export function useRankTrackingColumns(options: {
   domain: string;
   selectAnchorRef: MutableRefObject<SelectionAnchor | null>;
   onKeywordClick: (row: RankTrackingRow) => void;
+  onSetPinned: (vars: { trackingKeywordId: string; pinned: boolean }) => void;
   locationName?: string | null;
 }): ColumnDef<RankTrackingRow>[] {
   const {
@@ -214,6 +261,7 @@ export function useRankTrackingColumns(options: {
     domain,
     selectAnchorRef,
     onKeywordClick,
+    onSetPinned,
     locationName,
   } = options;
   const locationLabel = locationName
@@ -221,8 +269,9 @@ export function useRankTrackingColumns(options: {
     : undefined;
   return useMemo(() => {
     const cols: ColumnDef<RankTrackingRow>[] = [
+      pinnedColumn,
       makeSelectionColumn<RankTrackingRow>(selectAnchorRef),
-      makeKeywordColumn(onKeywordClick),
+      makeKeywordColumn(onKeywordClick, onSetPinned),
     ];
     if (showDesktop) {
       cols.push(makeDeviceColumn("desktop"));
@@ -246,6 +295,7 @@ export function useRankTrackingColumns(options: {
     domain,
     selectAnchorRef,
     onKeywordClick,
+    onSetPinned,
     locationLabel,
   ]);
 }

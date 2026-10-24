@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { FileDown, Plus, Sheet, Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/client/components/ConfirmDialog";
@@ -13,7 +13,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { SortingState } from "@tanstack/react-table";
 import { removeTrackingKeywords } from "@/serverFunctions/rank-tracking";
 import type { RankTrackingRow } from "@/types/schemas/rank-tracking";
-import { useRankTrackingColumns } from "./RankTrackingColumns";
+import {
+  PINNED_COLUMN_ID,
+  useRankTrackingColumns,
+} from "./RankTrackingColumns";
+import { useSetKeywordPinned } from "./useSetKeywordPinned";
 import { exportRankTracking } from "./RankTrackingTableParts";
 import {
   KeywordTrendModal,
@@ -32,6 +36,7 @@ export function RankTrackingTable({
   configId,
   projectId,
   locationCode,
+  languageCode,
   locationName,
   serpDepth,
   onAddKeywords,
@@ -47,6 +52,7 @@ export function RankTrackingTable({
   configId: string;
   projectId: string;
   locationCode: number;
+  languageCode: string;
   locationName?: string | null;
   serpDepth: number;
   onAddKeywords: () => void;
@@ -68,22 +74,37 @@ export function RankTrackingTable({
     [],
   );
 
+  const setKeywordPinned = useSetKeywordPinned(projectId, configId);
   const columns = useRankTrackingColumns({
     showDesktop,
     showMobile,
     domain,
     selectAnchorRef,
     onKeywordClick: handleKeywordClick,
+    onSetPinned: setKeywordPinned,
     locationName,
   });
 
+  // The pinned column sorts first and stays out of the sorting the page owns.
+  // Keep sorting stable across the table's own state updates, which otherwise
+  // recompute sorted rows and queue another pagination reset on every render.
+  const tableSorting = useMemo(
+    () => [{ id: PINNED_COLUMN_ID, desc: false }, ...sorting],
+    [sorting],
+  );
   const table = useDataTable({
     data: rows,
     columns,
-    state: { sorting },
+    state: {
+      sorting: tableSorting,
+      columnVisibility: { [PINNED_COLUMN_ID]: false },
+    },
     onSortingChange: (updater) =>
       onSortingChange(
-        typeof updater === "function" ? updater(sorting) : updater,
+        (typeof updater === "function"
+          ? updater(tableSorting)
+          : updater
+        ).filter((sort) => sort.id !== PINNED_COLUMN_ID),
       ),
     // The URL has no value for "unsorted", so a column stays sorted.
     enableSortingRemoval: false,
@@ -180,6 +201,7 @@ export function RankTrackingTable({
           configId={configId}
           domain={domain}
           locationCode={locationCode}
+          languageCode={languageCode}
           locationName={locationName ?? undefined}
           serpDepth={serpDepth}
           onClose={() => setTrendTarget(null)}

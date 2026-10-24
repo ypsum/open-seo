@@ -166,6 +166,7 @@ describe("GscService.listSitesForUserWithGrantStatus", () => {
             email: "sub-a@example.com",
             requiresReconnect: false,
             propertiesUnavailable: false,
+            apiDisabled: false,
             sites: [{ siteUrl: "https://x/", permissionLevel: "siteOwner" }],
           },
           {
@@ -173,6 +174,7 @@ describe("GscService.listSitesForUserWithGrantStatus", () => {
             email: null,
             requiresReconnect: true,
             propertiesUnavailable: false,
+            apiDisabled: false,
             sites: [],
           },
         ],
@@ -200,60 +202,78 @@ describe("GscService.listSitesForUserWithGrantStatus", () => {
           email: null,
           requiresReconnect: false,
           propertiesUnavailable: false,
+          apiDisabled: false,
           sites: [{ siteUrl: "https://x/", permissionLevel: "siteOwner" }],
         },
       ],
     });
   });
 
-  it("keeps non-auth GSC API errors reportable", async () => {
-    mocks.getUserInfoEmail.mockImplementation(
-      async ({ gscAccountId }: { gscAccountId?: string }) =>
-        `${gscAccountId}@example.com`,
-    );
-    const rateLimit = new GscApiError(429, "slow down");
-    mocks.listSites.mockImplementation(
-      async ({ gscAccountId }: { gscAccountId?: string }) => {
-        if (gscAccountId === "sub-b") throw rateLimit;
-        return [{ siteUrl: "https://x/", permissionLevel: "siteOwner" }];
-      },
-    );
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
+  it.each([
+    ["a rate limit", new GscApiError(429, "slow down"), false],
+    [
+      "a 403 because the API is disabled",
+      new GscApiError(403, "denied", "SERVICE_DISABLED"),
+      true,
+    ],
+  ])(
+    "keeps %s reportable instead of asking to reconnect",
+    async (_label, failure, apiDisabled) => {
+      mocks.getUserInfoEmail.mockImplementation(
+        async ({ gscAccountId }: { gscAccountId?: string }) =>
+          `${gscAccountId}@example.com`,
+      );
+      mocks.listSites.mockImplementation(
+        async ({ gscAccountId }: { gscAccountId?: string }) => {
+          if (gscAccountId === "sub-b") throw failure;
+          return [{ siteUrl: "https://x/", permissionLevel: "siteOwner" }];
+        },
+      );
+      const consoleError = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => undefined);
 
-    await expect(
-      GscService.listSitesForUserWithGrantStatus("u1"),
-    ).resolves.toEqual({
-      accounts: [
-        {
-          accountId: "sub-a",
-          email: "sub-a@example.com",
-          requiresReconnect: false,
-          propertiesUnavailable: false,
-          sites: [{ siteUrl: "https://x/", permissionLevel: "siteOwner" }],
-        },
-        {
-          accountId: "sub-b",
-          email: null,
-          requiresReconnect: false,
-          propertiesUnavailable: true,
-          sites: [],
-        },
-      ],
-    });
-    expect(consoleError).toHaveBeenCalledWith(
-      "Failed to list Search Console sites for account",
-      "sub-b",
-      rateLimit,
-    );
-    consoleError.mockRestore();
-  });
+      await expect(
+        GscService.listSitesForUserWithGrantStatus("u1"),
+      ).resolves.toEqual({
+        accounts: [
+          {
+            accountId: "sub-a",
+            email: "sub-a@example.com",
+            requiresReconnect: false,
+            propertiesUnavailable: false,
+            apiDisabled: false,
+            sites: [{ siteUrl: "https://x/", permissionLevel: "siteOwner" }],
+          },
+          {
+            accountId: "sub-b",
+            email: null,
+            requiresReconnect: false,
+            propertiesUnavailable: true,
+            apiDisabled,
+            sites: [],
+          },
+        ],
+      });
+      expect(consoleError).toHaveBeenCalledWith(
+        "Failed to list Search Console sites for account",
+        "sub-b",
+        failure,
+      );
+      consoleError.mockRestore();
+    },
+  );
 });
 
 describe("GscService.getPerformance", () => {
   beforeEach(() => {
     mocks.querySearchAnalytics.mockResolvedValue([]);
+    mocks.getByProjectId.mockResolvedValue({
+      connectedByUserId: "u1",
+      connectedAccountEmail: null,
+      gscAccountId: "sub-a",
+      siteUrl: "https://x/",
+    });
   });
 
   it.each([
@@ -281,4 +301,13 @@ describe("GscService.getPerformance", () => {
       });
     },
   );
+  it("uses the API's full query page for internal dashboard requests", async () => {
+    const result = await GscService.getPerformance({
+      projectId: "p1",
+      startDate: "2026-01-01",
+      endDate: "2026-01-31",
+      rowLimit: 25000,
+    });
+    expect(result.request.rowLimit).toBe(25000);
+  });
 });

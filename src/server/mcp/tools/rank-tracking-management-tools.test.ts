@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 import { addRankTrackingKeywordsTool } from "./add-rank-tracking-keywords";
 import { createRankTrackerTool } from "./create-rank-tracker";
+import { getRankTrackerTool } from "./get-rank-tracker";
 import { runRankTrackerTool } from "./run-rank-tracker";
 import { makeToolContext, textContent } from "./tool-test-support";
 
@@ -87,11 +88,34 @@ describe("rank tracking management MCP tools", () => {
       organizationId: "org_123",
       properties: {
         project_id: projectId,
-        domain: "openseo.so",
         devices: "mobile",
         schedule: "manual",
         source: "mcp",
       },
+    });
+  });
+
+  it("returns the live Google SERP link in both the text and the structured rows", async () => {
+    mocks.getTracker.mockResolvedValue({
+      config: {
+        ...createdConfig,
+        serpDepth: 40,
+        locationCode: 2276,
+        languageCode: "de",
+        locationName: null,
+      },
+      results: { rows: [{ keyword: "seo tool" }], run: null },
+    });
+
+    const result = await getRankTrackerTool.handler(
+      { projectId, trackerId },
+      toolContext,
+    );
+
+    const url = "https://www.google.com/search?q=seo+tool&hl=de&gl=de&pws=0";
+    expect(textContent(result)).toContain(url);
+    expect(result.structuredContent).toMatchObject({
+      results: { rows: [{ googleSerpUrl: url }] },
     });
   });
 

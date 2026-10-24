@@ -36,21 +36,35 @@ declare namespace Cloudflare {
     POSTHOG_HOST?: string;
     BETTER_AUTH_SECRET?: string;
     BETTER_AUTH_URL?: string;
+    // Encrypts saved Shopify crawler signatures. Kept separate from
+    // BETTER_AUTH_SECRET so the audit worker never holds the auth secret.
+    CRAWLER_ACCESS_SECRET?: string;
+    // Private Ed25519 JWK that signs site audit requests (Web Bot Auth). Hosted
+    // only; unset sends unsigned requests.
+    WEB_BOT_AUTH_JWK?: string;
     DATABASE_PROVIDER?: "d1" | "postgres";
     HYPERDRIVE?: {
       connectionString: string;
     };
     GOOGLE_CLIENT_ID?: string;
     GOOGLE_CLIENT_SECRET?: string;
+    GOOGLE_MAPS_API_KEY?: string;
     LOOPS_API_KEY?: string;
     LOOPS_TRANSACTIONAL_VERIFY_EMAIL_ID?: string;
     LOOPS_TRANSACTIONAL_RESET_PASSWORD_ID?: string;
     LOOPS_TRANSACTIONAL_INVITATION_ID?: string;
+    // Loops mailing list for product-update emails (hosted only). Unset skips
+    // the list sync with a warning.
+    LOOPS_PRODUCT_UPDATES_LIST_ID?: string;
     AUTUMN_SECRET_KEY?: string;
     AUTUMN_WEBHOOK_SECRET?: string;
     // Dub referral conversion tracking (hosted only); all Dub code no-ops
     // when unset.
     DUB_API_KEY?: string;
+    // Meta ad signup attribution via the Conversions API (hosted only); no-ops
+    // unless both are set.
+    META_PIXEL_ID?: string;
+    META_CONVERSIONS_API_TOKEN?: string;
     // HMAC secret for the operator-only GDPR storage-erasure endpoint.
     GDPR_ERASURE_SECRET?: string;
 
@@ -61,6 +75,25 @@ declare namespace Cloudflare {
 
     // DataForSEO API Basic auth value (base64 of login:password)
     DATAFORSEO_API_KEY: string;
+    LOCAL_RANK_WORKFLOW: Workflow<
+      Parameters<
+        // oxlint-disable-next-line typescript-eslint/consistent-type-imports -- preserve ambient Env augmentation
+        import("./server").LocalRankWorkflow["run"]
+      >[0]["payload"]
+    >;
+    AI_VISIBILITY_WORKFLOW: Workflow<
+      (
+        | { runId: string }
+        | { setupProjectId: string; runSeededTracking?: boolean }
+      ) & {
+        customer: {
+          organizationId: string;
+          userId: string;
+          userEmail: string;
+          projectId?: string;
+        };
+      }
+    >;
 
     // OpenRouter API key for the SAM in-app chat agent.
     OPENROUTER_API_KEY?: string;

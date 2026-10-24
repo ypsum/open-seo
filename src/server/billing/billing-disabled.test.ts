@@ -35,5 +35,13 @@ describe("OPENSEO_DISABLE_BILLING", () => {
     await expect(
       autumn.balances.finalize({ lockId: "dfs_x", action: "release" }),
     ).resolves.toEqual({ success: true });
+
+    // Billing page reads added upstream (invoices, usage) stay off Autumn too.
+    await expect(
+      autumn.invoices.list({ customerId: "org_1" }),
+    ).resolves.toMatchObject({ list: [] });
+    await expect(
+      autumn.events.aggregate({ customerId: "org_1", featureId: "x" }),
+    ).resolves.toMatchObject({ list: [] });
   });
 });

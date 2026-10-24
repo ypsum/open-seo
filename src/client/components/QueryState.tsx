@@ -1,19 +1,17 @@
 import type { ReactNode } from "react";
-import { Link } from "@tanstack/react-router";
 import type { UseQueryResult } from "@tanstack/react-query";
 import {
   getErrorCode,
   getStandardErrorMessage,
 } from "@/client/lib/error-messages";
-import { BILLING_ROUTE } from "@/shared/billing";
 import { ErrorState } from "@/client/components/ErrorState";
-import { Button } from "@/client/components/ui/button";
+import { InsufficientCreditsError } from "@/client/features/billing/InsufficientCreditsError";
 import { SkeletonCard } from "./SkeletonPresets";
 
 /**
  * A load failure with a retry button. The message goes through
- * `getStandardErrorMessage`. Out of credits, a retry can't succeed, so the
- * button goes to Billing instead.
+ * `getStandardErrorMessage`. Out of credits, a retry can't succeed, so it
+ * says how to get more credits instead.
  */
 export function QueryError({
   error,
@@ -26,7 +24,10 @@ export function QueryError({
 }: {
   /** Omit to always show `fallback`, for errors the page words itself. */
   error?: unknown;
-  /** The error behind a `fallback` the page words itself; picks the button. */
+  /**
+   * The error behind a `fallback` the page words itself; picks the button.
+   * Out of credits, the plan's own copy replaces the fallback.
+   */
   cause?: unknown;
   /** Shown when the error has no message of its own. */
   fallback: string;
@@ -35,6 +36,9 @@ export function QueryError({
   variant?: "inline" | "card" | "page";
   title?: string;
 }) {
+  if (getErrorCode(error ?? cause) === "INSUFFICIENT_CREDITS") {
+    return <InsufficientCreditsError variant={variant} title={title} />;
+  }
   return (
     <ErrorState
       variant={variant}
@@ -42,18 +46,6 @@ export function QueryError({
       message={getStandardErrorMessage(error, fallback)}
       onRetry={onRetry}
       isRetrying={isRetrying}
-      action={
-        getErrorCode(error ?? cause) === "INSUFFICIENT_CREDITS" ? (
-          <Button
-            variant="outline"
-            size="sm"
-            nativeButton={false}
-            render={<Link to={BILLING_ROUTE} />}
-          >
-            Go to Billing
-          </Button>
-        ) : undefined
-      }
     />
   );
 }

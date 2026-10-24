@@ -208,6 +208,25 @@ describe("analyzeHtml parity with the DOM reference", () => {
   });
 });
 
+describe("analyzeHtml meta names are case-insensitive", () => {
+  const analyzeHead = (head: string) =>
+    analyzeHtml(`<head>${head}</head>`, PAGE_URL, 200, 0);
+
+  it("reads the first description regardless of name case", () => {
+    expect(
+      analyzeHead(
+        `<meta name="Description" content="first"><meta name="description" content="second">`,
+      ).metaDescription,
+    ).toBe("first");
+  });
+
+  it("reads robots for name=ROBOTS", () => {
+    expect(
+      analyzeHead(`<meta name="ROBOTS" content="noindex">`).robotsMeta,
+    ).toBe("noindex");
+  });
+});
+
 describe("analyzeHtml extraction caps", () => {
   it("caps links and images per page", () => {
     const links = Array.from(
