@@ -4,13 +4,26 @@
 // correct, deviating (which fields), duplicate, found but not verifiable, or
 // not found. Results live in R2 (no migration that would collide with
 // upstream's numbered migrations on every sync).
-import { env } from "cloudflare:workers";
+import { env, waitUntil } from "cloudflare:workers";
 import { z } from "zod";
 import type { BillingCustomerContext } from "@/server/billing/subscription";
 import { createDataforseoClient } from "@/server/lib/dataforseo";
 import { dataforseoPricing } from "@/server/lib/dataforseo/pricing";
 import type { ListingSerpItem as SerpLiveItem } from "@/server/lib/dataforseo/listingSerp";
 import { AppError } from "@/server/lib/errors";
+import {
+  belongsTo,
+  compact,
+  compareToNap,
+  entryText,
+  hostOf,
+  mentionsBusiness,
+  normalizeUrl,
+  phoneDigits,
+  POST_PATH,
+  type Entry,
+  type Status,
+} from "@/server/features/listings/listingMatch";
 import {
   LISTING_PORTALS,
   type ListingPortal,
@@ -21,9 +34,12 @@ const PREFIX = "ypsum/listings/";
 // as partial results.
 const BROAD_DEPTH = 50;
 const PHONE_DEPTH = 30;
-const SITE_DEPTH = 20;
-/** Portals per `site:` search; keeps the query well under Google's 32 words. */
-const SITES_PER_QUERY = 6;
+const SITE_DEPTH = 10;
+const SITE_DEPTH_SINGLE = 10;
+/** Domains per `site:` search; longer OR chains came back as server errors. */
+const SITES_PER_QUERY = 3;
+/** Headroom in the estimate for one retry of failed searches. */
+const RETRY_BUFFER = 1.2;
 
 export const napSchema = z.object({
   name: z.string().trim().min(2).max(200),
@@ -39,96 +55,12 @@ export const napSchema = z.object({
 
 type Nap = z.infer<typeof napSchema>;
 
-type Field = "phone" | "postalCode" | "street";
-type Status =
-  | "correct"
-  | "deviating"
-  | "duplicate"
-  | "unverified"
-  | "not_found";
-
-type Entry = {
-  url: string;
-  title: string;
-  snippet: string;
-  mismatches: Field[];
-};
-
-const compact = (text: string) =>
-  text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-
-/** German numbers to one digit string: +49 / 0049 prefix becomes 0. */
-function phoneDigits(text: string) {
-  const digits = text.replace(/[^\d+]/g, "");
-  return digits.replace(/^(\+49|0049)/, "0").replace(/\D/g, "");
-}
-
-const PHONE_PATTERN = /(?:\+49|0049|\b0)[\d\s/()-]{6,}\d/g;
-const POSTAL_PATTERN = /\b\d{5}\b/g;
-const STREET_PATTERN =
-  /([\p{L}.-]+(?:straße|strasse|str\.|weg|platz|allee|gasse|ring|damm|ufer|chaussee))\s*(\d+\s?[a-z]?)\b/giu;
-
-function streetKey(street: string) {
-  return compact(
-    street.replace(/str(?:\.|asse|aße)/giu, "strasse").replace(/\d.*$/, ""),
-  );
-}
-
-function hostOf(url: string) {
-  try {
-    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
-  } catch {
-    return "";
-  }
-}
-
-function belongsTo(host: string, portal: ListingPortal) {
-  return portal.domains.some(
-    (domain) => host === domain || host.endsWith(`.${domain}`),
-  );
-}
-
-function normalizeUrl(url: string) {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.hostname.replace(/^www\./, "")}${parsed.pathname.replace(/\/$/, "")}`.toLowerCase();
-  } catch {
-    return url;
-  }
-}
-
-/** The fields an entry's title and snippet contradict, if it shows them. */
-function compareToNap(text: string, nap: Nap) {
-  const mismatches: Field[] = [];
-  let checked = 0;
-  const phones = (text.match(PHONE_PATTERN) ?? []).map(phoneDigits);
-  if (phones.length > 0) {
-    checked++;
-    if (!phones.includes(phoneDigits(nap.phone))) mismatches.push("phone");
-  }
-  const postalCodes: string[] = text.match(POSTAL_PATTERN) ?? [];
-  if (postalCodes.length > 0) {
-    checked++;
-    if (!postalCodes.includes(nap.postalCode)) mismatches.push("postalCode");
-  }
-  const streets = [...text.matchAll(STREET_PATTERN)].map((m) =>
-    streetKey(m[1]),
-  );
-  if (streets.length > 0) {
-    checked++;
-    if (!streets.includes(streetKey(nap.street))) mismatches.push("street");
-  }
-  return { mismatches, checked };
-}
-
-function mentionsBusiness(item: SerpLiveItem, nap: Nap) {
-  const text = `${item.title ?? ""} ${item.description ?? ""} ${item.url ?? ""}`;
-  return (
-    compact(text).includes(compact(nap.name)) ||
-    (text.match(PHONE_PATTERN) ?? [])
-      .map(phoneDigits)
-      .includes(phoneDigits(nap.phone))
-  );
+function siteQuery(nap: Nap, chunk: ListingPortal[], depth: number) {
+  const sites = chunk
+    .flatMap((portal) => portal.domains)
+    .map((domain) => `site:${domain}`)
+    .join(" OR ");
+  return { keyword: `"${nap.name}" (${sites})`, depth, portals: chunk };
 }
 
 function plannedQueries(nap: Nap, portals: ListingPortal[]) {
@@ -136,20 +68,20 @@ function plannedQueries(nap: Nap, portals: ListingPortal[]) {
     { keyword: `"${nap.name}" ${nap.city}`, depth: BROAD_DEPTH },
     { keyword: `"${nap.phone}"`, depth: PHONE_DEPTH },
   ];
-  const site: { keyword: string; depth: number; portals: ListingPortal[] }[] =
-    [];
-  for (let i = 0; i < portals.length; i += SITES_PER_QUERY) {
-    const chunk = portals.slice(i, i + SITES_PER_QUERY);
-    const sites = chunk
-      .flatMap((portal) => portal.domains)
-      .map((domain) => `site:${domain}`)
-      .join(" OR ");
-    site.push({
-      keyword: `"${nap.name}" (${sites})`,
-      depth: SITE_DEPTH,
-      portals: chunk,
-    });
+  // Pack portals until a query would carry more than SITES_PER_QUERY domains.
+  const site: ReturnType<typeof siteQuery>[] = [];
+  let chunk: ListingPortal[] = [];
+  let domains = 0;
+  for (const portal of portals) {
+    if (chunk.length > 0 && domains + portal.domains.length > SITES_PER_QUERY) {
+      site.push(siteQuery(nap, chunk, SITE_DEPTH));
+      chunk = [];
+      domains = 0;
+    }
+    chunk.push(portal);
+    domains += portal.domains.length;
   }
+  if (chunk.length > 0) site.push(siteQuery(nap, chunk, SITE_DEPTH));
   return { broad, site };
 }
 
@@ -168,7 +100,8 @@ export function estimateListingScan(
 ) {
   const portals = [...LISTING_PORTALS, ...extraPortals];
   const { broad, site } = plannedQueries(nap, portals);
-  const costUsd = [...broad, ...site].reduce((sum, q) => sum + usdFor(q), 0);
+  const costUsd =
+    [...broad, ...site].reduce((sum, q) => sum + usdFor(q), 0) * RETRY_BUFFER;
   return {
     portals: portals.length,
     searches: broad.length + site.length,
@@ -180,15 +113,34 @@ const storedScanSchema = z
   .object({ scanId: z.string(), createdAt: z.string() })
   .passthrough();
 
-export async function scanListings(
-  input: {
-    projectId: string;
-    nap: Nap;
-    extraPortals?: ListingPortal[];
-    maxCostUsd: number;
-    locationCode: number;
-    languageCode: string;
-  },
+type ScanInput = {
+  projectId: string;
+  nap: Nap;
+  extraPortals?: ListingPortal[];
+  maxCostUsd: number;
+  locationCode: number;
+  languageCode: string;
+};
+
+const scanKey = (projectId: string, scanId: string) =>
+  `${PREFIX}${projectId}/${scanId}.json`;
+
+async function saveScan(
+  projectId: string,
+  scan: { scanId: string; [key: string]: unknown },
+) {
+  await env.R2.put(scanKey(projectId, scan.scanId), JSON.stringify(scan), {
+    httpMetadata: { contentType: "application/json" },
+  });
+}
+
+/**
+ * Starts a scan and returns at once: a scan runs a dozen searches one after
+ * another and takes longer than an MCP call may stay open. The scan is saved
+ * as running, then done (or failed) when the background work finishes.
+ */
+export async function startListingScan(
+  input: ScanInput,
   billingCustomer: BillingCustomerContext,
 ) {
   const estimate = estimateListingScan(input.nap, input.extraPortals);
@@ -198,6 +150,34 @@ export async function scanListings(
       `This scan costs up to $${estimate.costUsd} (${estimate.searches} searches). Show this to the user and retry with maxCostUsd set to the approved amount.`,
     );
   }
+  const started = {
+    scanId: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    status: "running" as const,
+    nap: input.nap,
+    estimateUsd: estimate.costUsd,
+  };
+  await saveScan(input.projectId, started);
+  waitUntil(
+    runListingScan(input, billingCustomer, started)
+      .then((scan) => saveScan(input.projectId, scan))
+      .catch((error: unknown) => {
+        console.error("[listings] scan failed:", error);
+        return saveScan(input.projectId, {
+          ...started,
+          status: "failed",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }),
+  );
+  return started;
+}
+
+async function runListingScan(
+  input: ScanInput,
+  billingCustomer: BillingCustomerContext,
+  started: { scanId: string; createdAt: string; estimateUsd: number },
+) {
   const portals = [...LISTING_PORTALS, ...(input.extraPortals ?? [])];
   const client = createDataforseoClient(billingCustomer);
   // One failed or partial search must not sink the scan: keep what came
@@ -207,7 +187,9 @@ export async function scanListings(
     status: "partial" | "failed";
     message?: string;
   }[] = [];
+  let searches = 0;
   const search = async (query: { keyword: string; depth: number }) => {
+    searches++;
     try {
       const { items, partial } = await client.serp.listing({
         keyword: query.keyword,
@@ -224,28 +206,68 @@ export async function scanListings(
         status: "failed",
         message: error instanceof Error ? error.message : String(error),
       });
-      return [];
+      return null;
     }
   };
 
   const { broad, site } = plannedQueries(input.nap, portals);
   // One search after the other: throttled on purpose, never a burst.
   const results: SerpLiveItem[] = [];
-  for (const query of broad) results.push(...(await search(query)));
-  const seen = new Set(
-    results
-      .filter((item) => item.url && mentionsBusiness(item, input.nap))
-      .map((item) => hostOf(item.url ?? "")),
-  );
-  const missing = (portal: ListingPortal) =>
-    ![...seen].some((host) => belongsTo(host, portal));
-  let searches = broad.length;
-  for (const query of site) {
-    if (!query.portals.some(missing)) continue;
-    results.push(...(await search(query)));
-    searches++;
-  }
+  const [nameQuery, phoneQuery] = broad;
+  results.push(...((await search(nameQuery)) ?? []));
+  const phoneItems =
+    (await search(phoneQuery)) ??
+    // Retry the phone without spaces: Google errors on some spaced numbers.
+    (await search({
+      keyword: `"${phoneDigits(input.nap.phone)}"`,
+      depth: phoneQuery.depth,
+    }));
+  results.push(...(phoneItems ?? []));
 
+  const seen = () =>
+    new Set(
+      results
+        .filter((item) => item.url && mentionsBusiness(item, input.nap))
+        .map((item) => hostOf(item.url ?? "")),
+    );
+  const missing = (portal: ListingPortal, hosts: Set<string>) =>
+    ![...hosts].some((host) => belongsTo(host, portal));
+  for (const query of site) {
+    const hosts = seen();
+    const open = query.portals.filter((portal) => missing(portal, hosts));
+    if (open.length === 0) continue;
+    const items = await search(query);
+    if (items) {
+      results.push(...items);
+      continue;
+    }
+    // A failed group gets one more try, one portal at a time.
+    for (const portal of open) {
+      const single = await search(
+        siteQuery(input.nap, [portal], SITE_DEPTH_SINGLE),
+      );
+      results.push(...(single ?? []));
+    }
+  }
+  return buildScan(input, portals, results, {
+    ...started,
+    searches,
+    searchNotes,
+  });
+}
+
+function buildScan(
+  input: ScanInput,
+  portals: ListingPortal[],
+  results: SerpLiveItem[],
+  meta: {
+    scanId: string;
+    createdAt: string;
+    estimateUsd: number;
+    searches: number;
+    searchNotes: { keyword: string; status: string; message?: string }[];
+  },
+) {
   const relevant = results.filter(
     (item) =>
       item.type === "organic" && item.url && mentionsBusiness(item, input.nap),
@@ -253,33 +275,35 @@ export async function scanListings(
   const ownHost = input.nap.website ? hostOf(input.nap.website) : "";
 
   const rows = portals.map((portal) => {
-    const byUrl = new Map<string, Entry>();
+    const byUrl = new Map<string, Entry & { checked: number }>();
     for (const item of relevant) {
       if (!belongsTo(hostOf(item.url ?? ""), portal)) continue;
       const key = normalizeUrl(item.url ?? "");
       if (byUrl.has(key)) continue;
-      const text = `${item.title ?? ""} ${item.description ?? ""}`;
-      const { mismatches } = compareToNap(text, input.nap);
+      const { mismatches, checked } = compareToNap(entryText(item), input.nap);
       byUrl.set(key, {
         url: item.url ?? "",
         title: item.title ?? "",
         snippet: item.description ?? "",
         mismatches,
+        checked,
       });
     }
     const entries = [...byUrl.values()];
-    const mismatches = [...new Set(entries.flatMap((e) => e.mismatches))];
-    const verified = entries.some(
-      (e) => compareToNap(`${e.title} ${e.snippet}`, input.nap).checked > 0,
+    // A duplicate is a second entry with its own address or phone: posts,
+    // reels and offer pages of the same profile do not count.
+    const listings = entries.filter(
+      (entry) => entry.checked > 0 && !POST_PATH.test(entry.url),
     );
+    const mismatches = [...new Set(entries.flatMap((e) => e.mismatches))];
     const status: Status =
       entries.length === 0
         ? "not_found"
-        : entries.length > 1
+        : listings.length > 1
           ? "duplicate"
           : mismatches.length > 0
             ? "deviating"
-            : verified
+            : listings.length > 0
               ? "correct"
               : "unverified";
     return {
@@ -288,26 +312,25 @@ export async function scanListings(
       group: portal.group,
       status,
       mismatches,
-      entries,
+      entries: entries.map(({ checked: _checked, ...entry }) => entry),
     };
   });
 
   // Websites carrying the business name that are neither its own site nor a
   // known portal: old site builders (Jimdo, Wix) or copies.
-  const nameKey = compact(input.nap.name);
+  const nameKey = compact(input.nap.name).slice(0, 8);
+  const unknownHost = (host: string) =>
+    host &&
+    host !== ownHost &&
+    !host.endsWith(`.${ownHost}`) &&
+    !portals.some((portal) => belongsTo(host, portal));
   const otherSites = [
     ...new Set(
       relevant
         .map((item) => item.url ?? "")
         .filter((url) => {
           const host = hostOf(url);
-          return (
-            host &&
-            host !== ownHost &&
-            !host.endsWith(`.${ownHost}`) &&
-            !portals.some((portal) => belongsTo(host, portal)) &&
-            compact(host).includes(nameKey.slice(0, 8))
-          );
+          return unknownHost(host) && compact(host).includes(nameKey);
         }),
     ),
   ];
@@ -317,21 +340,15 @@ export async function scanListings(
       relevant
         .map((item) => hostOf(item.url ?? ""))
         .filter(
-          (host) =>
-            host &&
-            host !== ownHost &&
-            !portals.some((portal) => belongsTo(host, portal)) &&
-            !compact(host).includes(nameKey.slice(0, 8)),
+          (host) => unknownHost(host) && !compact(host).includes(nameKey),
         ),
     ),
   ];
 
-  const scan = {
-    scanId: crypto.randomUUID(),
-    createdAt: new Date().toISOString(),
+  return {
+    ...meta,
+    status: "done" as const,
     nap: input.nap,
-    searches,
-    estimateUsd: estimate.costUsd,
     summary: {
       portals: rows.length,
       correct: rows.filter((r) => r.status === "correct").length,
@@ -343,14 +360,7 @@ export async function scanListings(
     rows,
     otherSites,
     unlistedHosts,
-    searchNotes,
   };
-  await env.R2.put(
-    `${PREFIX}${input.projectId}/${scan.scanId}.json`,
-    JSON.stringify(scan),
-    { httpMetadata: { contentType: "application/json" } },
-  );
-  return scan;
 }
 
 export async function getListingScan(projectId: string, scanId?: string) {

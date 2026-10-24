@@ -4,7 +4,7 @@ import {
   estimateListingScan,
   getListingScan,
   napSchema,
-  scanListings,
+  startListingScan,
 } from "@/server/features/listings/listingScan";
 import { LISTING_PORTALS } from "@/server/features/listings/portals";
 import { buildProjectMeta } from "@/server/mcp/context";
@@ -91,7 +91,7 @@ export const scanListingsTool = {
   config: {
     title: "Scan directory listings",
     description:
-      "Checks where a business is listed across German directories, review sites and industry portals, through Google results only (one business at a time, searches run one after another, no crawling of the portals). Per portal: correct, DEVIATING (phone, postal code or street differ from the given data), DUPLICATE (several entries), found but not verifiable, or not found, each with the entry URL and snippet. Also lists other websites carrying the business name (old site builders, copies) and hosts that list the business but are not on the portal list yet. Call without maxCostUsd to get the estimate; spends credits when maxCostUsd covers it. Saved per project; read again with get_listing_scan.",
+      "Checks where a business is listed across German directories, review sites and industry portals, through Google results only (one business at a time, searches run one after another, no crawling of the portals). Per portal: correct, DEVIATING (phone, postal code or street differ from the given data), DUPLICATE (several entries), found but not verifiable, or not found, each with the entry URL and snippet. Also lists other websites carrying the business name (old site builders, copies) and hosts that list the business but are not on the portal list yet. Call without maxCostUsd to get the estimate; with an approved maxCostUsd the scan starts in the background (one to three minutes) and the call returns its scanId at once. Read the result with get_listing_scan.",
     inputSchema: scanInput,
     outputSchema: z
       .object({
@@ -126,7 +126,7 @@ export const scanListingsTool = {
         structuredContent: { estimate },
       });
     }
-    const scan = await scanListings(
+    const started = await startListingScan(
       {
         projectId: args.projectId,
         nap: args.nap,
@@ -138,14 +138,44 @@ export const scanListingsTool = {
       context.billing,
     );
     return mcpResponse({
-      text: renderScan(scan),
+      text: `Listing scan ${started.scanId} started (up to $${started.estimateUsd}). It runs in the background for one to three minutes; read it with get_listing_scan.`,
       meta,
-      structuredContent: { scan },
+      structuredContent: { scan: started },
     });
   }),
 };
 
-function renderScan(scan: Awaited<ReturnType<typeof scanListings>>) {
+const doneScanSchema = z.object({
+  scanId: z.string(),
+  status: z.literal("done"),
+  searches: z.number(),
+  summary: z.object({
+    correct: z.number(),
+    deviating: z.number(),
+    duplicate: z.number(),
+    unverified: z.number(),
+    notFound: z.number(),
+  }),
+  rows: z.array(
+    z.object({
+      portal: z.string(),
+      status: z.string(),
+      mismatches: z.array(z.string()),
+      entries: z.array(z.object({ url: z.string() })),
+    }),
+  ),
+  otherSites: z.array(z.string()),
+  unlistedHosts: z.array(z.string()),
+  searchNotes: z.array(
+    z.object({
+      keyword: z.string(),
+      status: z.string(),
+      message: z.string().optional(),
+    }),
+  ),
+});
+
+function renderScan(scan: z.infer<typeof doneScanSchema>) {
   const found = scan.rows.filter((row) => row.status !== "not_found");
   return [
     `Listing scan ${scan.scanId} (${scan.searches} searches): ${scan.summary.correct} correct, ${scan.summary.deviating} deviating, ${scan.summary.duplicate} duplicate, ${scan.summary.unverified} not verifiable, ${scan.summary.notFound} not found.`,
@@ -168,12 +198,24 @@ function renderScan(scan: Awaited<ReturnType<typeof scanListings>>) {
   ].join("\n");
 }
 
+function describeScan(scan: Record<string, unknown> | null) {
+  if (!scan) return "No listing scan yet for this project.";
+  if (scan.status === "running")
+    return `Listing scan ${String(scan.scanId)} is still running. Try again in a minute.`;
+  if (scan.status === "failed")
+    return `Listing scan ${String(scan.scanId)} failed: ${String(scan.error)}`;
+  const done = doneScanSchema.safeParse(scan);
+  return done.success
+    ? renderScan(done.data)
+    : JSON.stringify(scan).slice(0, 20000);
+}
+
 export const getListingScanTool = {
   name: "get_listing_scan",
   config: {
     title: "Get listing scan",
     description:
-      "Returns a saved listing scan of the project: the latest one, or the one with scanId. Uses no credits.",
+      "Returns a listing scan of the project: the latest one, or the one with scanId. Status running, done or failed. Uses no credits.",
     inputSchema: {
       projectId: projectIdSchema,
       scanId: z.uuid().optional().describe("Scan ID; defaults to the latest."),
@@ -194,9 +236,7 @@ export const getListingScanTool = {
     async (args: { projectId: string; scanId?: string }, context) => {
       const scan = await getListingScan(args.projectId, args.scanId);
       return mcpResponse({
-        text: scan
-          ? JSON.stringify(scan).slice(0, 20000)
-          : "No listing scan yet for this project.",
+        text: describeScan(scan),
         meta: buildProjectMeta(context, args.projectId, `/p/${args.projectId}`),
         structuredContent: { scan },
       });
