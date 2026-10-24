@@ -119,6 +119,17 @@ describe("dataforseoPricing", () => {
       billedUsd: 0.02,
     },
     {
+      name: "Maps tasks queued at high priority",
+      estimateUsd: dataforseoPricing.serp.localTaskPost({
+        keyword: "x",
+        locationCoordinates: ["1,1,13z", "2,2,13z"],
+        languageCode: "en",
+        device: "mobile",
+        depth: 20,
+      }),
+      billedUsd: 0.0024,
+    },
+    {
       name: "Claude response with web search",
       estimateUsd: dataforseoPricing.aiSearch.llmResponse({
         userPrompt: "x",
@@ -150,14 +161,15 @@ describe("dataforseoPricing", () => {
       depth: 20,
       targetDomain: "example.com",
     });
-    expect(creditsForProviderUsd(estimateUsd)).toBe(
+    // The estimate is the worst case: this post plus two queued retries.
+    expect(3 * creditsForProviderUsd(estimateUsd)).toBe(
       estimateRankCheckCredits(keywords, "desktop", 20, "queued").costCredits,
     );
   });
 
   it("prices a live operator rank check the way the rank check estimate does", () => {
     const keyword = "site:example.com seo";
-    const estimateUsd = dataforseoPricing.serp.rankCheck({
+    const liveUsd = dataforseoPricing.serp.rankCheck({
       keyword,
       keywordId: "id",
       ...location,
@@ -165,7 +177,16 @@ describe("dataforseoPricing", () => {
       depth: 20,
       targetDomain: "example.com",
     });
-    expect(creditsForProviderUsd(estimateUsd)).toBe(
+    const retryUsd = dataforseoPricing.serp.rankCheckTaskPost({
+      tasks: [{ keyword, keywordId: "id", device: "desktop" }],
+      ...location,
+      depth: 20,
+      targetDomain: "example.com",
+    });
+    // The estimate is the worst case: the live call plus two queued retries.
+    expect(
+      creditsForProviderUsd(liveUsd) + 2 * creditsForProviderUsd(retryUsd),
+    ).toBe(
       estimateRankCheckCredits([keyword], "desktop", 20, "live").costCredits,
     );
   });

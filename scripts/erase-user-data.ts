@@ -37,6 +37,7 @@ import {
   type GdprStorageErasurePayload,
 } from "../src/shared/gdpr-erasure";
 import { GSC_OAUTH_PROVIDER_ID } from "../src/shared/gsc";
+import { LocalScanStatus } from "../src/shared/local-seo";
 import { loadLocalEnv, parseArgs } from "./cli-utils";
 // The Node-safe raw barrel (not ../src/db/schema, the provider-aware one,
 // which imports cloudflare:workers).
@@ -254,6 +255,36 @@ async function buildInventory(db: Db, user: UserRow) {
           )
           .orderBy(schema.rankCheckRuns.id);
 
+  const activeAiVisibilityWorkflows =
+    projectIds.length === 0
+      ? []
+      : await db
+          .select({ id: schema.aiRuns.id })
+          .from(schema.aiRuns)
+          .where(
+            and(
+              inArray(schema.aiRuns.projectId, projectIds),
+              inArray(schema.aiRuns.status, ["queued", "running"]),
+            ),
+          )
+          .orderBy(schema.aiRuns.id);
+
+  const activeLocalRankWorkflows =
+    projectIds.length === 0
+      ? []
+      : await db
+          .select({ id: schema.localRankChecks.id })
+          .from(schema.localRankChecks)
+          .where(
+            and(
+              inArray(schema.localRankChecks.projectId, projectIds),
+              inArray(schema.localRankChecks.status, [
+                LocalScanStatus.Queued,
+                LocalScanStatus.Running,
+              ]),
+            ),
+          )
+          .orderBy(schema.localRankChecks.id);
   // Any table with a `project_id`: the counts differ only in which table.
   const projectCount = async (table: PgTable & { projectId: PgColumn }) =>
     projectIds.length === 0
@@ -325,12 +356,17 @@ async function buildInventory(db: Db, user: UserRow) {
 
   return {
     organizations,
+    aiVisibilityProjectIds: projectIds,
+    activeAiVisibilityWorkflowIds: activeAiVisibilityWorkflows.map(
+      (row) => row.id,
+    ),
     samSessionIds: samSessions.map((row) => row.id),
     auditIds: audits.map((row) => row.id),
     r2Keys,
     googleAccounts,
     activeAuditWorkflowIds: activeAuditWorkflows.map((row) => row.id),
     activeRankWorkflowIds: activeRankWorkflows.map((row) => row.id),
+    activeLocalRankWorkflowIds: activeLocalRankWorkflows.map((row) => row.id),
     databaseCounts,
   };
 }
@@ -614,6 +650,7 @@ async function main() {
         r2Objects: inventory.r2Keys.length,
         activeAuditWorkflows: inventory.activeAuditWorkflowIds.length,
         activeRankWorkflows: inventory.activeRankWorkflowIds.length,
+        activeLocalRankWorkflows: inventory.activeLocalRankWorkflowIds.length,
       },
       external: {
         googleAccounts: inventory.googleAccounts.length,
@@ -655,6 +692,9 @@ async function main() {
       auditIds: inventory.auditIds,
       activeAuditWorkflowIds: inventory.activeAuditWorkflowIds,
       activeRankWorkflowIds: inventory.activeRankWorkflowIds,
+      activeAiVisibilityWorkflowIds: inventory.activeAiVisibilityWorkflowIds,
+      activeLocalRankWorkflowIds: inventory.activeLocalRankWorkflowIds,
+      aiVisibilityProjectIds: inventory.aiVisibilityProjectIds,
       r2Keys: inventory.r2Keys,
       googleAccounts: inventory.googleAccounts,
     });

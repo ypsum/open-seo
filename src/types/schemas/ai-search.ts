@@ -87,7 +87,7 @@ const brandTopPageSchema = z.object({
   platform: z.enum(["chat_gpt", "google"]),
   // Page-level citation mentions from DataForSEO top_pages.
   mentions: z.number().int().nonnegative().nullable(),
-  // Page-level AI search volume from DataForSEO top_pages.
+  // Page-level AI demand index from DataForSEO top_pages.
   capturedVolume: z.number().int().nonnegative().nullable(),
   // Example prompts from the fetched mentions sample that cited this page.
   keywords: z.array(brandTopPageKeywordSchema).max(50),
@@ -180,7 +180,11 @@ export type WebSearchCountrySelection = z.infer<
 export const promptExplorerInputSchema = z.object({
   projectId: z.string().min(1),
   prompt: z.string().trim().min(1).max(PROMPT_EXPLORER_MAX_PROMPT_LENGTH),
-  models: z.array(promptExplorerModelSchema).min(1).max(4),
+  models: z
+    .array(promptExplorerModelSchema)
+    .min(1)
+    .max(4)
+    .default(["chat_gpt"]),
   highlightBrand: z
     .string()
     .trim()

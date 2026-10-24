@@ -91,9 +91,11 @@ export function analyzeHtml(
 
   const handleMetaTag = (attribs: Record<string, string>) => {
     const content = attribs["content"];
-    if (attribs["name"] === "description") {
+    // HTML meta names are ASCII case-insensitive: "Description" is valid.
+    const metaName = attribs["name"]?.toLowerCase();
+    if (metaName === "description") {
       metaDescription ??= content?.trim() ?? "";
-    } else if (attribs["name"] === "robots") {
+    } else if (metaName === "robots") {
       robotsMeta ??= content ?? null;
     } else if (attribs["property"] === "og:title") {
       ogTitle ??= content ?? null;

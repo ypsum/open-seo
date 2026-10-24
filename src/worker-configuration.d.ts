@@ -27,6 +27,7 @@ declare namespace Cloudflare {
 		// unrelated runtime-type drift (see cf-typegen); keep this in sync until then.
 		SITE_AUDIT_WORKFLOW: Workflow<Parameters<import("./audit-worker").SiteAuditWorkflow['run']>[0]['payload']>;
 		RANK_CHECK_WORKFLOW: Workflow<Parameters<import("./server").RankCheckWorkflow['run']>[0]['payload']>;
+		AI_VISIBILITY_WORKFLOW: Workflow<Parameters<import("./server").AiVisibilityWorkflow['run']>[0]['payload']>;
 	}
 }
 interface Env extends Cloudflare.Env {}

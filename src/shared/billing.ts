@@ -1,9 +1,26 @@
 export const BILLING_ROUTE = "/billing";
 export const SUBSCRIBE_ROUTE = "/subscribe";
 
+// Billing page tabs. Here rather than in BillingTabs.tsx because the route's
+// validateSearch reads them, and route options aren't code-split: importing
+// the component would pull its chart into the entry chunk.
+export const BILLING_TABS = [
+  { value: "usage", label: "Usage" },
+  { value: "invoices", label: "Invoices" },
+] as const;
+export type BillingTab = (typeof BILLING_TABS)[number]["value"];
+
+export type PlanStatus = "free" | "paid";
+
 export const AUTUMN_PAID_PLAN_ID = "base-plan";
 // YC deal: same entitlements as the base plan with $50 of monthly credits.
 export const AUTUMN_YC_PLAN_ID = "yc-plan";
+/** The plans the app sells through checkout. */
+export const CHECKOUT_PLAN_IDS = [
+  AUTUMN_PAID_PLAN_ID,
+  AUTUMN_YC_PLAN_ID,
+] as const;
+export type CheckoutPlanId = (typeof CHECKOUT_PLAN_IDS)[number];
 export const AUTUMN_SEO_DATA_TOP_UP_PLAN_ID = "credit-top-up";
 export const AUTUMN_PAID_PLAN_FEATURE_ID = "paid_plan";
 // Granted by both the free plan (now the Autumn Default, so every non-paid

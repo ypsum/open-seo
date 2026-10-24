@@ -13,7 +13,6 @@ import {
   Card,
   CardAction,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/client/components/ui/card";
@@ -106,15 +105,17 @@ export function AuditDetail({
     isFailed && resultsQuery.isSuccess && !failedWithResults;
   const results = resultsQuery.data;
   // A completed crawl that reached one page or none was blocked by the site,
-  // unless that page is an app shell, which the results explain instead.
-  // A failed audit stopped on our side, so it gets the error code instead.
+  // unless that page is an app shell or was rate limited, which the results
+  // explain instead. A failed audit stopped on our side, so it gets the error
+  // code instead.
   const siteBlocked =
     isComplete &&
     status.pagesCrawled <= 1 &&
     results !== undefined &&
     !results.issues.some(
       (issue) => issue.issueType === "javascript-rendering-suspected",
-    );
+    ) &&
+    !results.pages.some((page) => page.fetchClass === "rate_limited");
 
   return (
     <div className="px-4 py-4 md:px-6 md:py-6 pb-24 md:pb-8 overflow-auto">
@@ -295,9 +296,9 @@ function ProgressCard({
             <CardTitle className="font-medium text-muted-foreground">
               Crawled Pages ({crawledUrls.length})
             </CardTitle>
-            <CardDescription className="text-xs">
+            <CardAction className="text-xs text-muted-foreground">
               Updated {new Date(crawledUrls[0].crawledAt).toLocaleTimeString()}
-            </CardDescription>
+            </CardAction>
           </CardHeader>
           <CardContent className="max-h-[400px] overflow-y-auto">
             {crawledUrls.map((entry, i) => (

@@ -4,6 +4,7 @@ import { createDataforseoClient } from "@/server/lib/dataforseo";
 import { resolveLatestLlmModelName } from "@/server/lib/dataforseo/llm-models";
 import type { LlmResponseResult } from "@/server/lib/dataforseoLlmSchemas";
 import { AppError } from "@/server/lib/errors";
+import { assertPaidAiSearchPlan } from "./access";
 import {
   AI_SEARCH_PROMPT_CACHE_NAMESPACE,
   buildCacheKey,
@@ -53,6 +54,10 @@ export async function explorePrompt(
   input: PromptExplorerInput,
   billingCustomer: BillingCustomerContext,
 ): Promise<PromptExplorerResult> {
+  await assertPaidAiSearchPlan(
+    billingCustomer.organizationId,
+    "Prompt Explorer",
+  );
   const dataforseo = createDataforseoClient(billingCustomer);
   const highlightBrand = input.highlightBrand?.trim() || null;
 

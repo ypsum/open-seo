@@ -34,6 +34,8 @@ Optional env values:
 - `AUTH_MODE=local_noauth` (already set in compose)
 - `OPEN_SEO_IMAGE` (defaults to `ghcr.io/every-app/open-seo:latest`)
 
+AI Visibility uses your `DATAFORSEO_API_KEY` and sends tracked questions to DataForSEO. Set `OPENROUTER_API_KEY` for setup research, Prompt Research, and generated prompt suggestions. You pay providers directly; the app shows the collection cost before a check or schedule starts. Keep the container running for background answers and daily, weekly, or monthly tracking. The built-in scheduler checks for due work every five minutes; no host cron setup is required. See the [AI Visibility guide](https://openseo.so/docs/ai-visibility).
+
 If you are putting Docker behind a reverse proxy or a temporary tunnel, remember that Docker self-hosting runs with app auth disabled. Only expose it behind your own auth-protected reverse proxy, tunnel, or private network, and add the public hostname before restarting:
 
 ```bash
@@ -90,7 +92,7 @@ docker compose down
 
 ## Health and troubleshooting
 
-Startup checks appear in `docker compose logs` before the build. Once running, `/api/health` reports configuration and database status, and `docker compose ps` reports container health.
+Startup checks appear in `docker compose logs` before the build. Once running, `/api/health` reports configuration and database status, and `docker compose ps` reports container health. Scheduler failures appear as `[scheduler]` messages in container logs. The pinned Cloudflare Vite runtime exposes `/cdn-cgi/handler/scheduled`; the container calls it only at `127.0.0.1` using the configured `PORT`. It passes the five-minute cron expression without overriding the clock. Newer Cloudflare versions may use a different local route; the [Cron Triggers documentation](https://developers.cloudflare.com/workers/configuration/cron-triggers/#test-cron-triggers-locally) describes the local handler mechanism.
 
 ## Troubleshooting environment variables
 

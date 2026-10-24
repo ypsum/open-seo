@@ -8,6 +8,9 @@ const PAGE_HTML =
 // What SiteGround's bot protection answers a datacenter crawler, with a 202.
 const SITEGROUND_CHALLENGE =
   '<html><head><meta http-equiv="refresh" content="0;/.well-known/sgcaptcha/?r=%2Fpage"></meta></head></html>';
+// AWS WAF's challenge action, also a 202: an empty title and a script.
+const AWS_WAF_CHALLENGE =
+  '<html><head><title></title><script src="https://example.token.awswaf.com/challenge.js"></script></head><body></body></html>';
 function stubFetch({
   status,
   body = PAGE_HTML,
@@ -114,8 +117,8 @@ describe("crawlPage with JavaScript rendering", () => {
     });
   });
 
-  it("marks SiteGround's challenge blocked instead of auditing it when rendering is off", async () => {
-    stubFetch({ status: 202, body: SITEGROUND_CHALLENGE });
+  it("marks a 202 bot challenge blocked instead of auditing it when rendering is off", async () => {
+    stubFetch({ status: 202, body: AWS_WAF_CHALLENGE });
     expect(await crawl()).toMatchObject({
       statusCode: 202,
       fetchClass: "blocked",

@@ -7,10 +7,7 @@ import {
   BacklinksScopeAlert,
 } from "./BacklinksOverviewPanels";
 import { BacklinksResultsCard } from "./BacklinksPageSections";
-import {
-  BacklinksErrorState,
-  BacklinksLoadingState,
-} from "./BacklinksPageStates";
+import { BacklinksLoadingState } from "./BacklinksPageStates";
 import type { BacklinksSearchHistoryItem } from "@/client/hooks/useBacklinksSearchHistory";
 import type {
   BacklinksSearchState,
@@ -21,6 +18,7 @@ import type { BacklinksDomainExpansion } from "./useBacklinksDomainExpansion";
 import type { BacklinksFiltersState } from "./useBacklinksFilters";
 import type { BacklinksPageData } from "./useBacklinksPageData";
 import { SearchTabStrip } from "@/client/features/search-tabs/SearchTabStrip";
+import { QueryError } from "@/client/components/QueryState";
 import { Card } from "@/client/components/ui/card";
 import { RecentSearches } from "@/client/components/RecentSearches";
 import {
@@ -141,8 +139,12 @@ export function BacklinksBody({
     return (
       <>
         {tabControls}
-        <BacklinksErrorState
-          errorMessage={data.overviewErrorMessage}
+        <QueryError
+          title="Could not load backlinks"
+          cause={data.overviewQuery.error}
+          fallback={
+            data.overviewErrorMessage ?? "Please try again in a moment."
+          }
           onRetry={() => void data.overviewQuery.refetch()}
           isRetrying={data.overviewQuery.isFetching}
         />

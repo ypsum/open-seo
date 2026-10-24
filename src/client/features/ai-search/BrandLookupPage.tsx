@@ -5,6 +5,7 @@ import { BarChart3, Quote, Sparkles, TrendingUp } from "lucide-react";
 import { lookupBrand } from "@/serverFunctions/ai-search";
 import { useHostedPlanGate } from "@/client/features/billing/HostedPlanGate";
 import { ResearchPageShell } from "@/client/features/ai-search/ResearchPageShell";
+import { PromptTrackingWithoutUpgradeButton } from "@/client/features/ai-visibility/shared";
 import { BrandLookupResults } from "@/client/features/ai-search/components/BrandLookupResults";
 import { BrandLookupSearchCard } from "@/client/features/ai-search/components/BrandLookupSearchCard";
 import { RecentSearches } from "@/client/components/RecentSearches";
@@ -206,12 +207,14 @@ export function BrandLookupPage({
     <ResearchPageShell
       title="Brand Lookup"
       description="See how AI search cites any brand name or domain."
-      planStatus={planStatus}
       gate={{
         feature: "Brand Lookup",
         description:
           "See how ChatGPT and Google AI Overview cite any brand or domain — total mentions, sample prompts where it appears, and the pages cited alongside it.",
-        bullets: BRAND_LOOKUP_BULLETS,
+        features: BRAND_LOOKUP_BULLETS,
+        alternative: (
+          <PromptTrackingWithoutUpgradeButton projectId={projectId} />
+        ),
       }}
       form={
         <BrandLookupSearchCard

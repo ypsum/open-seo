@@ -13,21 +13,25 @@ import {
   getLanguageOptions,
 } from "@/client/features/keywords/locations";
 import type { ProjectMarket } from "@/client/features/projects/types";
+import type { LOCATION_OPTIONS } from "@/shared/keyword-locations";
 
 /**
- * The project's default market: country plus the language served for it.
- * Shared by project settings and onboarding so the pair — and the rule that
- * changing the country snaps the language to that country's native one —
- * stays identical in both places.
+ * A market: country plus the language served for it. Shared by project
+ * settings, onboarding, and AI visibility setup so the pair — and the rule
+ * that changing the country snaps the language to that country's native one —
+ * stays identical everywhere.
  */
 export function ProjectMarketFields({
   value,
   onChange,
   hideLanguageOnMobile = false,
+  countryOptions,
 }: {
   value: ProjectMarket;
   onChange: (market: ProjectMarket) => void;
   hideLanguageOnMobile?: boolean;
+  /** Defaults to the full country list. */
+  countryOptions?: typeof LOCATION_OPTIONS;
 }) {
   const countryId = useId();
   const languageId = useId();
@@ -45,6 +49,7 @@ export function ProjectMarketFields({
         <CountryCombobox
           id={countryId}
           value={value.locationCode}
+          options={countryOptions}
           onChange={(locationCode) =>
             onChange({
               locationCode,

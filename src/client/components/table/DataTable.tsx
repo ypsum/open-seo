@@ -11,6 +11,7 @@ import {
   type TableOptions,
 } from "@tanstack/react-table";
 import {
+  Fragment,
   useRef,
   type ComponentProps,
   type MouseEvent,
@@ -75,6 +76,8 @@ export function useSelectionAnchor(): MutableRefObject<SelectionAnchor | null> {
 
 export function makeSelectionColumn<TData>(
   anchorRef: MutableRefObject<SelectionAnchor | null>,
+  /** Names each row checkbox for screen readers. */
+  rowLabel: (row: Row<TData>) => string = () => "Select row",
 ): ColumnDef<TData> {
   return {
     id: "select",
@@ -83,14 +86,22 @@ export function makeSelectionColumn<TData>(
     header: ({ table }) => (
       <Checkbox
         checked={table.getIsAllRowsSelected()}
-        indeterminate={table.getIsSomeRowsSelected()}
-        disabled={table.getRowModel().rows.length === 0}
+        // Some-selected also counts rows that can't be selected.
+        indeterminate={
+          table.getIsSomeRowsSelected() && !table.getIsAllRowsSelected()
+        }
+        disabled={!table.getRowModel().rows.some((row) => row.getCanSelect())}
         onCheckedChange={(checked) => table.toggleAllRowsSelected(checked)}
         aria-label="Select all rows"
       />
     ),
     cell: ({ row, table }) => (
-      <SelectionCheckbox row={row} table={table} anchorRef={anchorRef} />
+      <SelectionCheckbox
+        row={row}
+        table={table}
+        anchorRef={anchorRef}
+        label={rowLabel(row)}
+      />
     ),
   };
 }
@@ -99,15 +110,18 @@ function SelectionCheckbox<TData>({
   row,
   table,
   anchorRef,
+  label,
 }: {
   row: Row<TData>;
   table: TanStackTable<TData>;
   anchorRef: MutableRefObject<SelectionAnchor | null>;
+  label: string;
 }) {
   return (
     <Checkbox
       checked={row.getIsSelected()}
-      aria-label="Select row"
+      disabled={!row.getCanSelect()}
+      aria-label={label}
       // The checkbox is a span, so a shift+click would also select page text.
       onMouseDown={(event) => {
         if (event.shiftKey) event.preventDefault();
@@ -160,6 +174,7 @@ export function DataTable<TData>({
   onRowClick,
   activeRowId,
   scrollClassName,
+  renderExpandedRow,
 }: DataTableFrameProps & {
   table: TanStackTable<TData>;
   /** Shown when there are no rows and no filters. */
@@ -176,6 +191,8 @@ export function DataTable<TData>({
   activeRowId?: string;
   /** Caps the table height, for example `max-h-96`. The header stays in view while the rows scroll. */
   scrollClassName?: string;
+  /** Details shown in a full-width row under an expanded row. */
+  renderExpandedRow?: (row: Row<TData>) => ReactNode;
 }) {
   const columns = table.getVisibleLeafColumns();
   const rows = table.getRowModel().rows;
@@ -252,36 +269,44 @@ export function DataTable<TData>({
               </TableRow>
             ) : (
               rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() ? "selected" : undefined}
-                  data-active={row.id === activeRowId ? "" : undefined}
-                  className={
-                    onRowClick
-                      ? "cursor-pointer data-active:bg-primary/5 data-active:shadow-[inset_2px_0_0_var(--color-primary)]"
-                      : undefined
-                  }
-                  onClick={
-                    onRowClick ? (event) => onRowClick(row, event) : undefined
-                  }
-                >
-                  {row.getVisibleCells().map((cell) => {
-                    const meta = cell.column.columnDef.meta?.cellClassName;
-                    return (
-                      <TableCell
-                        key={cell.id}
-                        className={
-                          typeof meta === "function" ? meta(row) : meta
-                        }
-                      >
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext(),
-                        )}
+                <Fragment key={row.id}>
+                  <TableRow
+                    data-state={row.getIsSelected() ? "selected" : undefined}
+                    data-active={row.id === activeRowId ? "" : undefined}
+                    className={
+                      onRowClick
+                        ? "cursor-pointer data-active:bg-primary/5 data-active:shadow-[inset_2px_0_0_var(--color-primary)]"
+                        : undefined
+                    }
+                    onClick={
+                      onRowClick ? (event) => onRowClick(row, event) : undefined
+                    }
+                  >
+                    {row.getVisibleCells().map((cell) => {
+                      const meta = cell.column.columnDef.meta?.cellClassName;
+                      return (
+                        <TableCell
+                          key={cell.id}
+                          className={
+                            typeof meta === "function" ? meta(row) : meta
+                          }
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </TableCell>
+                      );
+                    })}
+                  </TableRow>
+                  {renderExpandedRow && row.getIsExpanded() ? (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={columns.length}>
+                        {renderExpandedRow(row)}
                       </TableCell>
-                    );
-                  })}
-                </TableRow>
+                    </TableRow>
+                  ) : null}
+                </Fragment>
               ))
             )}
           </TableBody>

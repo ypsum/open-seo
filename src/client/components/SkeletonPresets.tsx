@@ -79,19 +79,26 @@ export function SkeletonCard({ className }: { className?: string }) {
  */
 export function SkeletonPage() {
   return (
-    <div className="px-4 py-4 pb-24 md:px-6 md:py-6 md:pb-8" aria-busy>
-      <div className="mx-auto max-w-7xl space-y-4">
-        {/* Line boxes the size of PageHeader's title and description. */}
-        <div className="space-y-1">
-          <div className="flex h-8 items-center">
-            <Skeleton className="h-6 w-48" />
-          </div>
-          <div className="flex h-5 items-center">
-            <Skeleton className="h-3.5 w-72 max-w-full" />
-          </div>
+    <div className="px-4 py-4 pb-24 md:px-6 md:py-6 md:pb-8">
+      <SkeletonPageContent className="mx-auto max-w-7xl" />
+    </div>
+  );
+}
+
+/** SkeletonPage without the page frame, for layouts that already provide it. */
+export function SkeletonPageContent({ className }: { className?: string }) {
+  return (
+    <div className={cn("space-y-4", className)} aria-busy>
+      {/* Line boxes the size of PageHeader's title and description. */}
+      <div className="space-y-1">
+        <div className="flex h-8 items-center">
+          <Skeleton className="h-6 w-48" />
         </div>
-        <SkeletonCard />
+        <div className="flex h-5 items-center">
+          <Skeleton className="h-3.5 w-72 max-w-full" />
+        </div>
       </div>
+      <SkeletonCard />
     </div>
   );
 }

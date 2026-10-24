@@ -8,6 +8,7 @@ import { ProjectRepository } from "@/server/features/projects/repositories/Proje
 import { SamSessionRepository } from "@/server/features/sam/SamSessionRepository";
 import { runScheduledRankChecks } from "@/server/features/rank-tracking/services/scheduledRankChecks";
 import { reconcileStaleAudits } from "@/server/features/audit/services/auditReconciler";
+import { sendFirstAuditEmails } from "@/server/features/audit/services/firstAuditEmails";
 import { getOrCreateOrganizationCustomer } from "@/server/billing/subscription";
 import { isHostedServerAuthMode } from "@/server/lib/runtime-env";
 import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
@@ -17,7 +18,6 @@ import {
 } from "@/server/mcp/oauth-provider";
 import { requestWithPublicOrigin } from "@/server/mcp/public-origin";
 import { MCP_ROUTE } from "@/server/mcp/context";
-import { handleSelfHostedOpenSeoMcpRequest } from "@/server/mcp/transport";
 import { withPgClient } from "@/db";
 import {
   AUTUMN_WEBHOOK_PATH,
@@ -145,6 +145,13 @@ function handleFetch(
   const pathname = new URL(publicRequest.url).pathname;
   ctx.waitUntil(maybeSendSelfHostHeartbeat(pathname));
 
+  if (pathname === "/api/ai-visibility/download") {
+    return import("@/server/features/ai-visibility/services/aiVisibilityExport").then(
+      ({ handleAiVisibilityDownload }) =>
+        handleAiVisibilityDownload(publicRequest),
+    );
+  }
+
   if (pathname === GDPR_STORAGE_ERASURE_PATH) {
     return handleGdprStorageErasure(publicRequest, env);
   }
@@ -169,7 +176,10 @@ function handleFetch(
     (authMode === "cloudflare_access" || authMode === "local_noauth") &&
     pathname === MCP_ROUTE
   ) {
-    return handleSelfHostedOpenSeoMcpRequest(publicRequest, authMode, env, ctx);
+    return import("@/server/mcp/transport").then(
+      ({ handleSelfHostedOpenSeoMcpRequest }) =>
+        handleSelfHostedOpenSeoMcpRequest(publicRequest, authMode, env, ctx),
+    );
   }
 
   return appFetch(request);
@@ -179,6 +189,8 @@ function handleFetch(
 // AuditScratchpad DO live in the open-seo-audit aux worker
 // (src/audit-worker.ts); this worker reaches them via cross-script bindings.
 export { RankCheckWorkflow } from "./server/workflows/RankCheckWorkflow";
+export { AiVisibilityWorkflow } from "./server/workflows/AiVisibilityWorkflow";
+export { LocalRankWorkflow } from "./server/workflows/LocalRankWorkflow";
 // Durable Object class for the SAM in-app agent (Agents SDK).
 export { SamChatAgent } from "./server/features/sam/SamChatAgent";
 
@@ -199,18 +211,23 @@ export default {
           env as OpenSeoOAuthEnv,
         );
         console.log("[mcp-oauth] purged expired OAuth data", result);
-        if (!result.done) {
-          // The sweep only advances past live records via deletions; a
-          // persistent incomplete scan means the keyspace outgrew the batch.
-          console.warn("[mcp-oauth] purge did not cover the full keyspace");
-        }
-
         // Daily referral-sale sweep: catches paid Autumn invoices the
         // billing.updated webhook path misses (renewals, one-time top-ups).
         try {
           await sweepDubReferredOrganizations();
         } catch (err) {
           console.error("[cron] Dub referral sale sweep failed:", err);
+        }
+
+        // Daily cleanup of Google grants no project uses any more, as the
+        // hosted privacy policy promises.
+        try {
+          const { purgeUnusedGoogleData } =
+            await import("@/server/features/google/googleDataRetention");
+          const purged = await withPgClient(() => purgeUnusedGoogleData());
+          console.log("[retention] purged unused Google data", purged);
+        } catch (err) {
+          console.error("[cron] Google data cleanup failed:", err);
         }
       }
       return;
@@ -229,7 +246,17 @@ export default {
       console.error("[cron] Stale-audit reconcile failed:", err);
     }
     // Scope a per-request Postgres client for the cron run (no-op in D1 mode).
-    await withPgClient(() => runScheduledRankChecks(env));
+    const checks = await Promise.allSettled([
+      withPgClient(() => runScheduledRankChecks(env)),
+      withPgClient(async () => {
+        const { runScheduledAiVisibility } =
+          await import("@/server/features/ai-visibility/services/scheduledAiVisibility");
+        await runScheduledAiVisibility();
+      }),
+      withPgClient(() => sendFirstAuditEmails()),
+    ]);
+    for (const result of checks)
+      if (result.status === "rejected") throw result.reason;
     if (watchdogError) throw watchdogError;
   },
 };

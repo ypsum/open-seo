@@ -29,7 +29,8 @@ import { QueryError } from "@/client/components/QueryState";
 import { DomainSearchCard } from "@/client/features/domain/components/DomainSearchCard";
 import { KeywordsTab } from "@/client/features/domain/components/KeywordsTab";
 import { PagesTab } from "@/client/features/domain/components/PagesTab";
-import { StatTile } from "@/client/components/StatTile";
+import { HelpLabel } from "@/client/components/HelpLabel";
+import { MetricsTable } from "@/client/components/MetricsTable";
 import { SearchTabStrip } from "@/client/features/search-tabs/SearchTabStrip";
 import type { SearchTabInput } from "@/client/features/search-tabs/types";
 import { useSearchTabNavigation } from "@/client/features/search-tabs/useSearchTabNavigation";
@@ -632,22 +633,38 @@ export function DomainOverviewPage({
                 </Badge>
               </div>
               <div className="px-4 pb-4">
-                <div className="grid grid-cols-1 gap-3 rounded-lg border border-border p-3 md:grid-cols-2">
-                  <StatTile
-                    label="Estimated Organic Traffic"
-                    value={formatMetric(
-                      state.overview.organicTraffic,
-                      state.overview.hasData,
-                    )}
-                    hint={overviewMetricsHint}
-                  />
-                  <StatTile
-                    label="Organic Keywords"
-                    value={formatMetric(
-                      state.overview.organicKeywords,
-                      state.overview.hasData,
-                    )}
-                    hint={overviewMetricsHint}
+                <div className="w-full max-w-xl rounded-lg border border-border p-3">
+                  <MetricsTable
+                    rows={[
+                      {
+                        label: overviewMetricsHint ? (
+                          <HelpLabel
+                            label="Estimated organic traffic"
+                            helpText={overviewMetricsHint}
+                          />
+                        ) : (
+                          "Estimated organic traffic"
+                        ),
+                        value: formatMetric(
+                          state.overview.organicTraffic,
+                          state.overview.hasData,
+                        ),
+                      },
+                      {
+                        label: overviewMetricsHint ? (
+                          <HelpLabel
+                            label="Organic keywords"
+                            helpText={overviewMetricsHint}
+                          />
+                        ) : (
+                          "Organic keywords"
+                        ),
+                        value: formatMetric(
+                          state.overview.organicKeywords,
+                          state.overview.hasData,
+                        ),
+                      },
+                    ]}
                   />
                 </div>
               </div>

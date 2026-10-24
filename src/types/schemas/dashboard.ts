@@ -23,3 +23,15 @@ export const dashboardStepDismissalSchema = dashboardProjectInputSchema.extend({
   step: dashboardSetupStepSchema,
   dismissed: z.boolean(),
 });
+
+export const dashboardSiteTabSchema = z.enum([
+  "overview",
+  "keywords",
+  "backlinks",
+]);
+export const dashboardSearchSchema = z.object({
+  tab: dashboardSiteTabSchema.optional().catch(undefined),
+});
+export const dashboardBacklinksInputSchema = dashboardProjectInputSchema.extend(
+  { kind: z.enum(["new", "lost", "all"]).default("new") },
+);

@@ -1,12 +1,10 @@
+import { SkeletonTableRows } from "@/client/components/SkeletonPresets";
 import { CardShell } from "@/client/components/CardShell";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Area, AreaChart, XAxis, YAxis } from "recharts";
-import {
-  moreDetailsClass,
-  StatGridSkeleton,
-} from "@/client/features/dashboard/cardParts";
-import { StatTile } from "@/client/components/StatTile";
+import { moreDetailsClass } from "@/client/features/dashboard/cardParts";
+import { MetricsTable, percentChange } from "@/client/components/MetricsTable";
 import { Ga4ConnectCard } from "@/client/features/dashboard/Ga4ConnectCard";
 import {
   formatCount,
@@ -67,7 +65,6 @@ export function Ga4Card({
   return (
     <CardShell
       title="Organic traffic"
-      stamp="Google Analytics · last 28 days"
       action={
         <Link
           to="/p/$projectId/settings"
@@ -79,13 +76,16 @@ export function Ga4Card({
         </Link>
       }
     >
+      <p className="mb-4 text-sm text-muted-foreground">
+        Google Analytics · Last 28 days
+      </p>
       {reportQuery.isError ? (
         <p className="text-sm text-muted-foreground">
           Couldn&rsquo;t load Google Analytics data. Try again shortly.
         </p>
       ) : !report ? (
         <div className="space-y-3" aria-busy>
-          <StatGridSkeleton tileClassName="h-16" />
+          <SkeletonTableRows rows={5} columns={3} />
           <Skeleton className="h-24" />
         </div>
       ) : !report.totals.sessions ? (
@@ -94,36 +94,58 @@ export function Ga4Card({
         </p>
       ) : (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <StatTile
-              label="Sessions"
-              value={statValue(report.totals.sessions, formatCount)}
-              delta={{
-                current: report.totals.sessions,
-                previous: report.prevTotals.sessions,
-              }}
-            />
-            <StatTile
-              label="Active users"
-              value={statValue(report.totals.activeUsers, formatCount)}
-              delta={{
-                current: report.totals.activeUsers,
-                previous: report.prevTotals.activeUsers,
-              }}
-            />
-            <StatTile
-              label="Engagement rate"
-              value={statValue(report.totals.engagementRate, formatCtr)}
-            />
-            <StatTile
-              label="Key events"
-              value={statValue(report.totals.keyEvents, formatCount)}
-              delta={{
-                current: report.totals.keyEvents,
-                previous: report.prevTotals.keyEvents,
-              }}
-            />
-          </div>
+          <MetricsTable
+            showChange
+            rows={[
+              {
+                label: "Sessions",
+                value: statValue(report.totals.sessions, formatCount),
+                change: percentChange(
+                  report.totals.sessions,
+                  report.prevTotals.sessions,
+                ),
+              },
+              {
+                label: "Active users",
+                value: statValue(report.totals.activeUsers, formatCount),
+                change: percentChange(
+                  report.totals.activeUsers,
+                  report.prevTotals.activeUsers,
+                ),
+              },
+              {
+                label: "Engagement rate",
+                value: statValue(report.totals.engagementRate, formatCtr),
+                change: null,
+              },
+              {
+                label: "Key events",
+                value: statValue(report.totals.keyEvents, formatCount),
+                change: percentChange(
+                  report.totals.keyEvents,
+                  report.prevTotals.keyEvents,
+                ),
+              },
+            ].map((metric) => ({
+              label: metric.label,
+              value: metric.value,
+              change:
+                metric.change === null ? undefined : (
+                  <span
+                    className={
+                      metric.change > 0
+                        ? "text-success"
+                        : metric.change < 0
+                          ? "text-destructive"
+                          : "text-muted-foreground"
+                    }
+                  >
+                    {metric.change > 0 ? "+" : ""}
+                    {metric.change}%
+                  </span>
+                ),
+            }))}
+          />
           <ChartContainer config={sessionsChartConfig} className="h-24">
             <AreaChart
               data={report.trend}

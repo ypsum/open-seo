@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getLatestResults } from "./rankTrackingResults";
 
+vi.mock("cloudflare:workers", () => ({ env: { DATABASE_PROVIDER: "d1" } }));
+
 const mocks = vi.hoisted(() => ({
   getConfigById: vi.fn(),
   getKeywordsForConfig: vi.fn(),

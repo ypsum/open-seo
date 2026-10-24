@@ -1,11 +1,10 @@
-import { Link } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
 import { ErrorState } from "@/client/components/ErrorState";
 import { FormDialog } from "@/client/components/FormDialog";
 import { BackButton, PageHeader } from "@/client/components/PageHeader";
 import { Button } from "@/client/components/ui/button";
+import { InsufficientCreditsError } from "@/client/features/billing/InsufficientCreditsError";
 import { getErrorCode } from "@/client/lib/error-messages";
-import { BILLING_ROUTE } from "@/shared/billing";
 import { formatLocationLabel } from "@/shared/keyword-locations";
 import { useKeywordResearchController } from "@/client/features/keywords/state/useKeywordResearchController";
 import type {
@@ -284,25 +283,19 @@ function ResearchErrorCard({
 
   return (
     <div className="mx-auto w-full max-w-xl pt-1">
-      <ErrorState
-        message={message}
-        onRetry={
-          errorCode === "UNKNOWN_LOCATION" ? undefined : controller.retrySearch
-        }
-        isRetrying={controller.researchRetrying}
-        action={
-          errorCode === "INSUFFICIENT_CREDITS" ? (
-            <Button
-              variant="outline"
-              size="sm"
-              nativeButton={false}
-              render={<Link to={BILLING_ROUTE} />}
-            >
-              Go to Billing
-            </Button>
-          ) : undefined
-        }
-      />
+      {errorCode === "INSUFFICIENT_CREDITS" ? (
+        <InsufficientCreditsError />
+      ) : (
+        <ErrorState
+          message={message}
+          onRetry={
+            errorCode === "UNKNOWN_LOCATION"
+              ? undefined
+              : controller.retrySearch
+          }
+          isRetrying={controller.researchRetrying}
+        />
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ function makeRow(id: string, selectedIds: Set<string>) {
   return {
     id,
     getIsSelected: () => selectedIds.has(id),
+    getCanSelect: () => id !== "locked",
   };
 }
 
@@ -97,5 +98,22 @@ describe("applyShiftRangeSelection", () => {
 
     expect(Array.from(selectedIds)).toEqual(["a"]);
     expect(anchorRef.current).toEqual({ id: "d", selected: false });
+  });
+
+  it("skips rows that can't be selected", () => {
+    const selectedIds = new Set<string>();
+    const table = makeTable(["a", "locked", "c"], selectedIds);
+    const anchorRef: MutableRefObject<SelectionAnchor | null> = {
+      current: { id: "a", selected: true },
+    };
+
+    applyShiftRangeSelection(
+      makeEvent(true),
+      makeRow("c", selectedIds),
+      table,
+      anchorRef,
+    );
+
+    expect(Array.from(selectedIds)).toEqual(["a", "c"]);
   });
 });

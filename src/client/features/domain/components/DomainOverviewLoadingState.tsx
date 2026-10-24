@@ -9,13 +9,8 @@ export function DomainOverviewLoadingState() {
         <Skeleton className="h-6 w-48" />
       </div>
       <div className="px-4 pb-4">
-        <div className="grid grid-cols-1 gap-3 rounded-lg border border-border p-3 md:grid-cols-2">
-          {Array.from({ length: 2 }, (_, index) => (
-            <div key={index} className="space-y-2">
-              <Skeleton className="h-3 w-32" />
-              <Skeleton className="h-7 w-24" />
-            </div>
-          ))}
+        <div className="w-full max-w-xl rounded-lg border border-border p-3">
+          <SkeletonTableRows rows={3} columns={2} />
         </div>
       </div>
       <div className="px-4 pb-4">

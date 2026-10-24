@@ -1,5 +1,6 @@
 import type { Autumn } from "autumn-js";
 import { getRequiredEnvValue } from "@/server/lib/runtime-env";
+import { AppError } from "@/server/lib/errors";
 import {
   disabledBillingCheck,
   disabledBillingCustomer,
@@ -45,48 +46,96 @@ function loadAutumn(): Promise<Autumn> {
   ));
 }
 
+// Fork patch (ypsum): with OPENSEO_DISABLE_BILLING=1 every method answers
+// locally (paid plan, unlimited credits, nothing metered) and the SDK is never
+// loaded, so AUTH_MODE=hosted runs without AUTUMN_SECRET_KEY. Checkout and the
+// billing portal have nothing to open and refuse.
+function local<T>(value: unknown): T {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- local stand-ins carry only the fields the app reads
+  return value as T;
+}
+
+function billingDisabledError(): never {
+  throw new AppError("NOT_FOUND", "Billing is disabled on this server");
+}
+
 /** Shape-preserving lazy facade over the SDK client: call sites keep the
  *  plain `autumn.check(...)` form. Covers only the methods we use — add a
- *  line here when adopting a new one.
- *
- *  Fork patch (ypsum): with OPENSEO_DISABLE_BILLING=1 every method answers
- *  locally (unlimited, nothing metered) and the SDK is never loaded. */
+ *  line here when adopting a new one. */
 export const autumn = {
   check: async (...args: Parameters<Autumn["check"]>) =>
     (await isBillingDisabled())
-      ? (disabledBillingCheck(args[0]) as unknown as Awaited<
-          ReturnType<Autumn["check"]>
-        >)
+      ? local<Awaited<ReturnType<Autumn["check"]>>>(
+          disabledBillingCheck(args[0]),
+        )
       : loadAutumn().then((client) => client.check(...args)),
   track: async (...args: Parameters<Autumn["track"]>) =>
     (await isBillingDisabled())
-      ? ({} as Awaited<ReturnType<Autumn["track"]>>)
+      ? local<Awaited<ReturnType<Autumn["track"]>>>({})
       : loadAutumn().then((client) => client.track(...args)),
   customers: {
     getOrCreate: async (
       ...args: Parameters<Autumn["customers"]["getOrCreate"]>
     ) =>
       (await isBillingDisabled())
-        ? (disabledBillingCustomer(args[0].customerId) as unknown as Awaited<
-            ReturnType<Autumn["customers"]["getOrCreate"]>
-          >)
+        ? local<Awaited<ReturnType<Autumn["customers"]["getOrCreate"]>>>(
+            disabledBillingCustomer(args[0].customerId),
+          )
         : loadAutumn().then((client) => client.customers.getOrCreate(...args)),
     get: async (...args: Parameters<Autumn["customers"]["get"]>) =>
       (await isBillingDisabled())
-        ? (disabledBillingCustomer(args[0].customerId) as unknown as Awaited<
-            ReturnType<Autumn["customers"]["get"]>
-          >)
+        ? local<Awaited<ReturnType<Autumn["customers"]["get"]>>>(
+            disabledBillingCustomer(args[0].customerId),
+          )
         : loadAutumn().then((client) => client.customers.get(...args)),
+    update: async (...args: Parameters<Autumn["customers"]["update"]>) =>
+      (await isBillingDisabled())
+        ? local<Awaited<ReturnType<Autumn["customers"]["update"]>>>(
+            disabledBillingCustomer(args[0].customerId),
+          )
+        : loadAutumn().then((client) => client.customers.update(...args)),
+  },
+  events: {
+    aggregate: async (...args: Parameters<Autumn["events"]["aggregate"]>) =>
+      (await isBillingDisabled())
+        ? local<Awaited<ReturnType<Autumn["events"]["aggregate"]>>>({
+            list: [],
+            total: {},
+          })
+        : loadAutumn().then((client) => client.events.aggregate(...args)),
+  },
+  invoices: {
+    list: async (...args: Parameters<Autumn["invoices"]["list"]>) =>
+      (await isBillingDisabled())
+        ? local<Awaited<ReturnType<Autumn["invoices"]["list"]>>>({
+            list: [],
+            nextCursor: null,
+          })
+        : loadAutumn().then((client) => client.invoices.list(...args)),
   },
   balances: {
     // Confirms or releases a hold taken by `check({ lock })`. Not in the
     // SDK's fail-open set, so a lost deduction surfaces as an error.
     finalize: async (...args: Parameters<Autumn["balances"]["finalize"]>) =>
       (await isBillingDisabled())
-        ? ({ success: true } as Awaited<
-            ReturnType<Autumn["balances"]["finalize"]>
-          >)
+        ? local<Awaited<ReturnType<Autumn["balances"]["finalize"]>>>({
+            success: true,
+          })
         : loadAutumn().then((client) => client.balances.finalize(...args)),
+  },
+  billing: {
+    attach: async (...args: Parameters<Autumn["billing"]["attach"]>) =>
+      (await isBillingDisabled())
+        ? billingDisabledError()
+        : loadAutumn().then((client) => client.billing.attach(...args)),
+    openCustomerPortal: async (
+      ...args: Parameters<Autumn["billing"]["openCustomerPortal"]>
+    ) =>
+      (await isBillingDisabled())
+        ? billingDisabledError()
+        : loadAutumn().then((client) =>
+            client.billing.openCustomerPortal(...args),
+          ),
   },
 };
 
