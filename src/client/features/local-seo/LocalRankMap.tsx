@@ -74,7 +74,8 @@ export default function LocalRankMap({
           <CircleMarker
             key={point.id}
             center={[point.latitude, point.longitude]}
-            radius={19}
+            // Fork (ypsum): smaller dots so 7×7 and 9×9 grids stay readable.
+            radius={points.length > 25 ? 13 : 19}
             pathOptions={{
               fillColor: color,
               fillOpacity: 1,

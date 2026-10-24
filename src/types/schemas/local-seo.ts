@@ -36,7 +36,8 @@ export const updateLocalKeywordsSchema = localTrackerIdSchema.extend({
 export const createLocalTrackerSchema = localProjectSchema.extend({
   business: localBusinessSchema,
   keywords: localKeywordsSchema,
-  gridSize: z.union([z.literal(3), z.literal(5)]),
+  // Fork (ypsum): finer grids up to 9×9, like Local Falcon's dense scans.
+  gridSize: z.union([z.literal(3), z.literal(5), z.literal(7), z.literal(9)]),
   spacingKm: z.number().min(0.25).max(10),
 });
 export const startLocalCheckSchema = localTrackerIdSchema.extend({

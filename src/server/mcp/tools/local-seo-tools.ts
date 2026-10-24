@@ -752,9 +752,11 @@ const getLocalRankGridInputSchema = {
     })
     .describe("Coordinate the grid is centered on (usually the storefront)."),
   gridSize: z
-    .union([z.literal(3), z.literal(5)])
+    .union([z.literal(3), z.literal(5), z.literal(7), z.literal(9)])
     .optional()
-    .describe("Grid width: 3 (9 searches) or 5 (25 searches). Defaults to 3."),
+    .describe(
+      "Grid width: 3 (9 searches), 5 (25), 7 (49) or 9 (81). Defaults to 3.",
+    ),
   spacingKm: z
     .number()
     .min(0.25)
@@ -897,7 +899,7 @@ export const getLocalRankGridTool = {
   config: {
     title: "Get local rank grid",
     description:
-      "Runs one Google Maps search per point of a square grid around a coordinate and reports where the target business ranks at each point — plus each point's result count and #1 business — revealing how far its Maps visibility reaches. Cost scales with the grid: gridSize squared SERP calls (3x3 = 9, the sensible default; 5x5 = 25). Charges credits per grid point. The searches run as one queued batch that usually finishes within this call; if some are still running you get status 'processing'. Calling again with the same arguments within an hour collects the same searches at no extra charge, so repeat the call in about a minute to finish a 'processing' grid or to recover a lost response.",
+      "Runs one Google Maps search per point of a square grid around a coordinate and reports where the target business ranks at each point — plus each point's result count and #1 business — revealing how far its Maps visibility reaches. Cost scales with the grid: gridSize squared SERP calls (3x3 = 9, the sensible default; 5x5 = 25; 7x7 = 49; 9x9 = 81). Charges credits per grid point. The searches run as one queued batch that usually finishes within this call; if some are still running you get status 'processing'. Calling again with the same arguments within an hour collects the same searches at no extra charge, so repeat the call in about a minute to finish a 'processing' grid or to recover a lost response.",
     inputSchema: getLocalRankGridInputSchema,
     outputSchema: z.looseObject({
       status: z.enum(["completed", "processing"]),

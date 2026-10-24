@@ -139,7 +139,7 @@ function ListingLookup({
 
 const settingsSchema = z.object({
   keywords: localKeywordsTextSchema,
-  gridSize: z.union([z.literal(3), z.literal(5)]),
+  gridSize: z.union([z.literal(3), z.literal(5), z.literal(7), z.literal(9)]),
   spacingKm: z
     .string()
     .refine(
@@ -172,7 +172,7 @@ function TrackerSettings({
   const form = useAppForm({
     defaultValues: {
       keywords: "",
-      gridSize: 3 as 3 | 5,
+      gridSize: 3 as 3 | 5 | 7 | 9,
       spacingKm: "2",
     },
     validationLogic: revalidateLogic(),
@@ -234,6 +234,8 @@ function TrackerSettings({
                   items={[
                     { value: 3, label: "3×3 · 9 points" },
                     { value: 5, label: "5×5 · 25 points" },
+                    { value: 7, label: "7×7 · 49 points" },
+                    { value: 9, label: "9×9 · 81 points" },
                   ]}
                 />
               )}
