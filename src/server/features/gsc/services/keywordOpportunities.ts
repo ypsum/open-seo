@@ -38,6 +38,22 @@ function ctrAt(position: number | null): number {
   return rounded <= 20 ? 0.01 : 0.002;
 }
 
+const MAP_PACK_GSC_POSITION = 5;
+const MAP_PACK_ORGANIC_FLOOR = 20;
+
+function compact(text: string) {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+/** Brand queries ask for the business by name; they are not opportunities. */
+function isBrandQuery(query: string, brandTerms: readonly string[]) {
+  const q = compact(query);
+  return brandTerms.some((term) => {
+    const t = compact(term);
+    return t.length >= 3 && q.includes(t);
+  });
+}
+
 type QueryAggregate = {
   query: string;
   clicks: number;
@@ -172,6 +188,8 @@ async function getKeywordOpportunities(
     dateRange: GscDateRange;
     minImpressions: number;
     limit: number;
+    brandTerms: string[];
+    includeBrand: boolean;
   },
   billingCustomer: BillingCustomerContext,
 ) {
@@ -193,9 +211,15 @@ async function getKeywordOpportunities(
         )
       : 28;
 
-  const queries = aggregateByQuery(performance.rows).filter(
+  const aboveFloor = aggregateByQuery(performance.rows).filter(
     (entry) => entry.impressions >= input.minImpressions,
   );
+  const brandQueries = aboveFloor.filter((entry) =>
+    isBrandQuery(entry.query, input.brandTerms),
+  );
+  const queries = input.includeBrand
+    ? aboveFloor
+    : aboveFloor.filter((entry) => !brandQueries.includes(entry));
   queries.sort((a, b) => b.impressions - a.impressions);
   const priced = queries.slice(0, MAX_VOLUME_LOOKUPS);
 
@@ -232,8 +256,17 @@ async function getKeywordOpportunities(
       0,
       Math.round(demand * ctrAt(target) - entry.clicks),
     );
+    const trackedPosition = tracked.get(entry.query.toLowerCase()) ?? null;
+    // Search Console counts the map pack as a position, so a local business
+    // can show a top average while its website ranks nowhere organically.
+    const likelyMapPack =
+      position != null &&
+      position <= MAP_PACK_GSC_POSITION &&
+      (trackedPosition == null || trackedPosition > MAP_PACK_ORGANIC_FLOOR);
     return {
       query: entry.query,
+      isBrand: brandQueries.includes(entry),
+      likelyMapPack,
       clickPotential: potential,
       searchVolume: volume,
       impressions: entry.impressions,
@@ -242,7 +275,7 @@ async function getKeywordOpportunities(
         ? Math.round((entry.clicks / entry.impressions) * 1000) / 1000
         : 0,
       gscPosition: position,
-      trackedPosition: tracked.get(entry.query.toLowerCase()) ?? null,
+      trackedPosition,
       page: pages[0]?.[0] ?? null,
       otherPages: pages.length - 1,
     };
@@ -257,6 +290,7 @@ async function getKeywordOpportunities(
     targetPosition: TARGET_POSITION,
     volumeLocation,
     queriesConsidered: priced.length,
+    brandQueriesExcluded: input.includeBrand ? 0 : brandQueries.length,
     rows: rows.slice(0, input.limit),
   };
 }
