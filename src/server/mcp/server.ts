@@ -43,6 +43,11 @@ import {
   listLocalTrackersTool,
   startLocalCheckTool,
 } from "@/server/mcp/tools/local-tracker-tools";
+import {
+  getListingScanTool,
+  listListingPortalsTool,
+  scanListingsTool,
+} from "@/server/mcp/tools/listing-tools";
 import { getRankCompetitorsTool } from "@/server/mcp/tools/get-rank-competitors";
 import { addRankTrackingKeywordsTool } from "@/server/mcp/tools/add-rank-tracking-keywords";
 import { createRankTrackerTool } from "@/server/mcp/tools/create-rank-tracker";
@@ -335,6 +340,9 @@ export function createOpenSeoMcpServer(
   register(createLocalTrackerTool);
   register(getLocalTrackerTool);
   register(startLocalCheckTool);
+  register(listListingPortalsTool);
+  register(scanListingsTool);
+  register(getListingScanTool);
   register(getRankCompetitorsTool);
   register(runRankTrackerTool);
   register(getRankedKeywordsTool);
