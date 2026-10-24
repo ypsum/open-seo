@@ -1,7 +1,14 @@
 // Fork (ypsum): where impressions should turn into clicks. Joins Search
-// Console queries (with the page that ranks) to DataForSEO search volume and
-// the latest tracked position, and ranks them by click potential: the clicks
-// the query would bring at position 3 minus the clicks it brings today.
+// Console queries (with the page that ranks) to local Google Ads search volume
+// and the latest tracked position, and ranks them by click potential.
+//
+// Demand: on page 1 (average position <= 10) the site is shown on nearly every
+// search, so its impressions are the real local demand. Below page 1 most
+// searches never load the result, so local volume (scaled to the window)
+// stands in, falling back to impressions as a lower bound.
+// Potential = demand x CTR at the target position - clicks today. The target
+// is position 3, or the current position when it is already better, so a top
+// result with a weak CTR still shows its snippet gap.
 import { waitUntil } from "cloudflare:workers";
 import { z } from "zod";
 import type { BillingCustomerContext } from "@/server/billing/subscription";
@@ -9,12 +16,14 @@ import { GscService } from "@/server/features/gsc/services/GscService";
 import type { GscDateRange } from "@/server/features/gsc/searchAnalytics";
 import { RankTrackingService } from "@/server/features/rank-tracking/services/RankTrackingService";
 import { createDataforseoClient } from "@/server/lib/dataforseo";
+import { fetchAdsSearchVolumeForKeywords } from "@/server/lib/dataforseo/keyword-metrics";
 import { buildCacheKey, getCached, setCached } from "@/server/lib/r2-cache";
 
 /** Volume moves slowly; a month keeps weekly reviews free. */
 const VOLUME_TTL_SECONDS = 30 * 24 * 60 * 60;
-/** Queries priced per call: Labs keyword_overview takes up to 700. */
+/** Queries priced per call: Google Ads search_volume takes up to 1000. */
 const MAX_VOLUME_LOOKUPS = 300;
+const PAGE_ONE = 10;
 const TARGET_POSITION = 3;
 
 /** Organic CTR by position, a conservative blend of public CTR studies. */
@@ -71,7 +80,11 @@ const volumeSchema = z.object({ volume: z.number().nullable() });
 
 async function getVolumes(
   queries: string[],
-  market: { locationCode: number; languageCode: string; projectId: string },
+  market: {
+    locationCode: number;
+    languageCode: string;
+    locationName: string | null;
+  },
   billingCustomer: BillingCustomerContext,
 ): Promise<Map<string, number | null>> {
   const volumes = new Map<string, number | null>();
@@ -81,6 +94,7 @@ async function getVolumes(
       key: await buildCacheKey("ypsum:keyword-volume", {
         organizationId: billingCustomer.organizationId,
         locationCode: market.locationCode,
+        locationName: market.locationName,
         languageCode: market.languageCode,
         query,
       }),
@@ -97,19 +111,23 @@ async function getVolumes(
   if (missing.length === 0) return volumes;
 
   const dataforseo = createDataforseoClient(billingCustomer);
-  const items = await dataforseo.labs.keywordOverview({
+  // Google Ads, not Labs: it accepts a city (Labs only knows countries, and a
+  // national volume overstates a local business's demand) and covers more
+  // long-tail local queries.
+  const items = await fetchAdsSearchVolumeForKeywords(dataforseo, {
     keywords: missing.map((entry) => entry.query),
     locationCode: market.locationCode,
     languageCode: market.languageCode,
+    ...(market.locationName ? { locationName: market.locationName } : {}),
   });
   const found = new Map(
     items.map((item) => [
       (item.keyword ?? "").toLowerCase(),
-      item.keyword_info?.search_volume ?? null,
+      item.search_volume ?? null,
     ]),
   );
   for (const entry of missing) {
-    // Labs answers only the keywords it knows; the rest have no volume.
+    // Keywords Google Ads rejects or does not know have no volume.
     const volume = found.get(entry.query.toLowerCase()) ?? null;
     volumes.set(entry.query, volume);
     waitUntil(
@@ -121,9 +139,11 @@ async function getVolumes(
   return volumes;
 }
 
-async function getTrackedPositions(projectId: string) {
+async function getTrackedPositions(
+  configs: Awaited<ReturnType<typeof RankTrackingService.getConfigs>>,
+  projectId: string,
+) {
   const positions = new Map<string, number>();
-  const configs = await RankTrackingService.getConfigs(projectId);
   const trackers = await Promise.all(
     configs.map((config) =>
       RankTrackingService.getTracker(config.id, projectId),
@@ -179,13 +199,18 @@ async function getKeywordOpportunities(
   queries.sort((a, b) => b.impressions - a.impressions);
   const priced = queries.slice(0, MAX_VOLUME_LOOKUPS);
 
+  // The oldest tracker's place is the business's home market (configs come
+  // oldest first); without a local tracker volume stays national.
+  const configs = await RankTrackingService.getConfigs(input.projectId);
+  const volumeLocation =
+    configs.find((config) => config.locationName)?.locationName ?? null;
   const [volumes, tracked] = await Promise.all([
     getVolumes(
       priced.map((entry) => entry.query),
-      input,
+      { ...input, locationName: volumeLocation },
       billingCustomer,
     ),
-    getTrackedPositions(input.projectId),
+    getTrackedPositions(configs, input.projectId),
   ]);
 
   const rows = priced.map((entry) => {
@@ -195,12 +220,17 @@ async function getKeywordOpportunities(
     const pages = [...entry.pages.entries()];
     pages.sort((a, b) => b[1] - a[1]);
     const volume = volumes.get(entry.query) ?? null;
-    // Demand in the same window as the clicks: monthly volume scaled to the
-    // window, or the impressions Google reported when Labs has no volume.
-    const demand = volume != null ? (volume * days) / 30 : entry.impressions;
+    // Demand in the same window as the clicks (see the header comment).
+    const onPageOne = position != null && position <= PAGE_ONE;
+    const demand =
+      onPageOne || volume == null ? entry.impressions : (volume * days) / 30;
+    const target =
+      position != null && position < TARGET_POSITION
+        ? position
+        : TARGET_POSITION;
     const potential = Math.max(
       0,
-      Math.round(demand * ctrAt(TARGET_POSITION) - entry.clicks),
+      Math.round(demand * ctrAt(target) - entry.clicks),
     );
     return {
       query: entry.query,
@@ -225,6 +255,7 @@ async function getKeywordOpportunities(
     endDate,
     days,
     targetPosition: TARGET_POSITION,
+    volumeLocation,
     queriesConsidered: priced.length,
     rows: rows.slice(0, input.limit),
   };
