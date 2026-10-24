@@ -82,6 +82,7 @@ vi.mock("@/server/lib/dataforseo/labs", () => ({
   fetchKeywordSuggestions: vi.fn(),
   fetchKeywordIdeas: vi.fn(),
   fetchDomainRankOverview: vi.fn(),
+  fetchHistoricalRankOverview: vi.fn(),
   fetchRankedKeywords: vi.fn(),
   fetchRelevantPages: vi.fn(),
   fetchKeywordOverview: vi.fn(),

@@ -32,6 +32,7 @@ import {
 } from "@/server/lib/dataforseo/backlinks";
 import {
   fetchDomainRankOverview,
+  fetchHistoricalRankOverview,
   fetchKeywordIdeas,
   fetchKeywordOverview,
   fetchKeywordSuggestions,
@@ -193,6 +194,11 @@ export function createDataforseoClient(customer: BillingCustomerContext) {
         customer,
         fetchDomainRankOverview,
         dataforseoPricing.domain.rankOverview,
+      ),
+      historicalRankOverview: meter(
+        customer,
+        fetchHistoricalRankOverview,
+        dataforseoPricing.domain.historicalRankOverview,
       ),
       rankedKeywords: meter(
         customer,

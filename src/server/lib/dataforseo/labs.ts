@@ -258,6 +258,36 @@ export async function fetchDomainRankOverview(input: {
   };
 }
 
+// Fork (ypsum): monthly organic history of one domain, the raw curve behind
+// the visibility comparison. etv = sum of search volume x CTR at position.
+export type HistoricalRankOverviewItem = {
+  year?: number | null;
+  month?: number | null;
+  metrics?: LabsMetricsBlock | null;
+  [key: string]: unknown;
+};
+
+export async function fetchHistoricalRankOverview(input: {
+  target: string;
+  locationCode: number;
+  languageCode: string;
+}): Promise<DataforseoApiResponse<HistoricalRankOverviewItem[]>> {
+  const response = await dataforseoPost<
+    DataforseoItemsTask<HistoricalRankOverviewItem>
+  >("/v3/dataforseo_labs/google/historical_rank_overview/live", [
+    {
+      target: input.target,
+      location_code: input.locationCode,
+      language_code: input.languageCode,
+    },
+  ]);
+  const task = assertOk(response);
+  return {
+    data: task.result?.[0]?.items ?? [],
+    billing: buildTaskBilling(task),
+  };
+}
+
 type RankedKeywordsPage = {
   items: DomainRankedKeywordItem[];
   totalCount: number | null;
