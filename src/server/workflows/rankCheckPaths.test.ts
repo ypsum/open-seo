@@ -25,6 +25,10 @@ vi.mock("@/server/lib/dataforseo", () => ({
   fetchRankCheckTaskResult: mocks.fetchRankCheckTaskResult,
   MAX_TASKS_PER_POST: 100,
 }));
+vi.mock("@/server/features/rank-tracking/services/rankCompetitorStore", () => ({
+  saveCompetitorPositions: vi.fn(),
+  listCompetitorDomains: vi.fn(async () => []),
+}));
 vi.mock("@/server/workflows/pgStep", () => ({
   pgStep: (
     _step: unknown,
@@ -53,6 +57,8 @@ function checkContext(keywordIds: string[]) {
     locationCode: 2840,
     languageCode: "en",
     runId: "run_1",
+    configId: "cfg_1",
+    competitorDomains: [],
   };
 }
 

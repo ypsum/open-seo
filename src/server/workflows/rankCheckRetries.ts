@@ -3,6 +3,7 @@ import { RankTrackingRepository } from "@/server/features/rank-tracking/reposito
 import type { RankCheckTaskInput } from "@/server/lib/dataforseo";
 import { RETRY_ROUNDS } from "@/shared/rank-tracking";
 import { pgStep } from "@/server/workflows/pgStep";
+import { saveCompetitorPositions } from "@/server/features/rank-tracking/services/rankCompetitorStore";
 import {
   COLLECT_STEP_CONFIG,
   expandToTaskInputs,
@@ -179,7 +180,10 @@ export async function retryRankChecks(
       step,
       `${label}save`,
       COLLECT_STEP_CONFIG,
-      () => saveRetryResults(ctx.runId, pairs, collected),
+      async () => {
+        await saveCompetitorPositions(ctx, collected);
+        return saveRetryResults(ctx.runId, pairs, collected);
+      },
     );
     pairs = withOtherDevicePositions(updated);
   }
