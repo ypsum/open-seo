@@ -9,7 +9,7 @@ import { z } from "zod";
 import type { BillingCustomerContext } from "@/server/billing/subscription";
 import { createDataforseoClient } from "@/server/lib/dataforseo";
 import { dataforseoPricing } from "@/server/lib/dataforseo/pricing";
-import type { SerpLiveItem } from "@/server/lib/dataforseo/serp";
+import type { ListingSerpItem as SerpLiveItem } from "@/server/lib/dataforseo/listingSerp";
 import { AppError } from "@/server/lib/errors";
 import {
   LISTING_PORTALS,
@@ -17,8 +17,10 @@ import {
 } from "@/server/features/listings/portals";
 
 const PREFIX = "ypsum/listings/";
-const BROAD_DEPTH = 100;
-const PHONE_DEPTH = 50;
+// Google rarely has ten pages for a small business; deeper searches came back
+// as partial results.
+const BROAD_DEPTH = 50;
+const PHONE_DEPTH = 30;
 const SITE_DEPTH = 20;
 /** Portals per `site:` search; keeps the query well under Google's 32 words. */
 const SITES_PER_QUERY = 6;
@@ -152,7 +154,7 @@ function plannedQueries(nap: Nap, portals: ListingPortal[]) {
 }
 
 const usdFor = (query: { keyword: string; depth: number }) =>
-  dataforseoPricing.serp.live({
+  dataforseoPricing.serp.listing({
     keyword: query.keyword,
     depth: query.depth,
     locationCode: 2276,
@@ -198,13 +200,33 @@ export async function scanListings(
   }
   const portals = [...LISTING_PORTALS, ...(input.extraPortals ?? [])];
   const client = createDataforseoClient(billingCustomer);
-  const search = (query: { keyword: string; depth: number }) =>
-    client.serp.live({
-      keyword: query.keyword,
-      depth: query.depth,
-      locationCode: input.locationCode,
-      languageCode: input.languageCode,
-    });
+  // One failed or partial search must not sink the scan: keep what came
+  // back and say which search was incomplete.
+  const searchNotes: {
+    keyword: string;
+    status: "partial" | "failed";
+    message?: string;
+  }[] = [];
+  const search = async (query: { keyword: string; depth: number }) => {
+    try {
+      const { items, partial } = await client.serp.listing({
+        keyword: query.keyword,
+        depth: query.depth,
+        locationCode: input.locationCode,
+        languageCode: input.languageCode,
+      });
+      if (partial)
+        searchNotes.push({ keyword: query.keyword, status: "partial" });
+      return items;
+    } catch (error) {
+      searchNotes.push({
+        keyword: query.keyword,
+        status: "failed",
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
+  };
 
   const { broad, site } = plannedQueries(input.nap, portals);
   // One search after the other: throttled on purpose, never a burst.
@@ -321,6 +343,7 @@ export async function scanListings(
     rows,
     otherSites,
     unlistedHosts,
+    searchNotes,
   };
   await env.R2.put(
     `${PREFIX}${input.projectId}/${scan.scanId}.json`,

@@ -1,3 +1,4 @@
+import { fetchListingSerp } from "@/server/lib/dataforseo/listingSerp";
 import {
   fetchBusinessListingsSearch,
   fetchMyBusinessInfo,
@@ -263,6 +264,10 @@ export const dataforseoPricing = {
         "live",
         input.keyword,
       ),
+    ),
+    // Fork (ypsum): the listing check's search, priced like a live SERP.
+    listing: priced(fetchListingSerp, (input) =>
+      serpUsd(clampSerpDepth(input.depth), "live", input.keyword),
     ),
     rankCheck: priced(fetchRankCheckSerp, (input) =>
       serpUsd(clampSerpDepth(input.depth), "live", input.keyword),

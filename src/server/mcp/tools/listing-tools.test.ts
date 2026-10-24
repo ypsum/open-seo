@@ -21,7 +21,7 @@ vi.mock("@/server/auth/repositories/AuthRepository", () => ({
   AuthRepository: { getMembership: vi.fn() },
 }));
 vi.mock("@/server/lib/dataforseo", () => ({
-  createDataforseoClient: () => ({ serp: { live: mocks.live } }),
+  createDataforseoClient: () => ({ serp: { listing: mocks.live } }),
 }));
 
 const nap = {
@@ -48,43 +48,47 @@ describe("scan_listings", () => {
       locationCode: 2276,
       languageCode: "de",
     });
-    mocks.live.mockImplementation(async ({ keyword }: { keyword: string }) =>
-      keyword.startsWith('"Miss Cherry Coco" Neuss')
-        ? [
-            organic(
-              "https://www.gelbeseiten.de/gsbiz/1",
-              "Miss Cherry Coco in Düsseldorf",
-              "Pionierstraße 54, 40215 Düsseldorf, Tel. 0176 21030068",
-            ),
-            organic(
-              "https://www.dasoertliche.de/a",
-              "Miss Cherry Coco Neuss",
-              "Am Heiligenhäuschen 3, 41468 Neuss",
-            ),
-            organic(
-              "https://www.dasoertliche.de/b",
-              "Miss Cherry Coco Spa Party",
-              "Kindergeburtstag in Neuss",
-            ),
-            organic(
-              "https://www.11880.com/x",
-              "Miss Cherry Coco",
-              "Am Heiligenhäuschen 3, 41468 Neuss, 02131 123456",
-            ),
-            organic(
-              "https://misscherrycoco.jimdofree.com/",
-              "Miss Cherry Coco",
-              "Spa Partys",
-            ),
-            organic(
-              "https://kindergeburtstag.events/miss-cherry-coco",
-              "Miss Cherry Coco",
-              "Wellness Kindergeburtstag",
-            ),
-            organic("https://misscherrycoco.de/", "Miss Cherry Coco", "Spa"),
-          ]
-        : [],
-    );
+    mocks.live.mockImplementation(async ({ keyword }: { keyword: string }) => {
+      if (keyword.startsWith('"02131')) throw new Error("Task failed");
+      return {
+        partial: keyword.startsWith('"Miss Cherry Coco" Neuss'),
+        items: keyword.startsWith('"Miss Cherry Coco" Neuss')
+          ? [
+              organic(
+                "https://www.gelbeseiten.de/gsbiz/1",
+                "Miss Cherry Coco in Düsseldorf",
+                "Pionierstraße 54, 40215 Düsseldorf, Tel. 0176 21030068",
+              ),
+              organic(
+                "https://www.dasoertliche.de/a",
+                "Miss Cherry Coco Neuss",
+                "Am Heiligenhäuschen 3, 41468 Neuss",
+              ),
+              organic(
+                "https://www.dasoertliche.de/b",
+                "Miss Cherry Coco Spa Party",
+                "Kindergeburtstag in Neuss",
+              ),
+              organic(
+                "https://www.11880.com/x",
+                "Miss Cherry Coco",
+                "Am Heiligenhäuschen 3, 41468 Neuss, 02131 123456",
+              ),
+              organic(
+                "https://misscherrycoco.jimdofree.com/",
+                "Miss Cherry Coco",
+                "Spa Partys",
+              ),
+              organic(
+                "https://kindergeburtstag.events/miss-cherry-coco",
+                "Miss Cherry Coco",
+                "Wellness Kindergeburtstag",
+              ),
+              organic("https://misscherrycoco.de/", "Miss Cherry Coco", "Spa"),
+            ]
+          : [],
+      };
+    });
   });
 
   it("returns the estimate without searching when no budget is approved", async () => {
@@ -114,6 +118,13 @@ describe("scan_listings", () => {
           ),
           otherSites: z.array(z.string()),
           unlistedHosts: z.array(z.string()),
+          searchNotes: z.array(
+            z.object({
+              keyword: z.string(),
+              status: z.string(),
+              message: z.string().optional(),
+            }),
+          ),
         }),
       })
       .parse(result.structuredContent);
@@ -129,6 +140,10 @@ describe("scan_listings", () => {
     expect(byPortal.yelp).toMatchObject({ status: "not_found" });
     expect(scan.otherSites).toEqual(["https://misscherrycoco.jimdofree.com/"]);
     expect(scan.unlistedHosts).toEqual(["kindergeburtstag.events"]);
+    expect(scan.searchNotes).toEqual([
+      { keyword: '"Miss Cherry Coco" Neuss', status: "partial" },
+      { keyword: '"02131 123456"', status: "failed", message: "Task failed" },
+    ]);
     expect(mocks.put).toHaveBeenCalledOnce();
   });
 });
