@@ -34,6 +34,19 @@ const inputSchema = {
     .max(200)
     .optional()
     .describe("Rows to return. Defaults to 50."),
+  brandTerms: z
+    .array(z.string().min(1).max(100))
+    .max(20)
+    .optional()
+    .describe(
+      "Extra brand names or abbreviations. Queries containing the project name, its domain name or one of these are brand searches.",
+    ),
+  includeBrand: z
+    .boolean()
+    .optional()
+    .describe(
+      "Keep brand searches in the list (marked isBrand). Defaults to false: brand searches are left out.",
+    ),
 } as const;
 
 type Args = z.infer<z.ZodObject<typeof inputSchema>>;
@@ -50,6 +63,8 @@ const rowOutput = z
     trackedPosition: z.number().nullable(),
     page: z.string().nullable(),
     otherPages: z.number(),
+    isBrand: z.boolean(),
+    likelyMapPack: z.boolean(),
   })
   .passthrough();
 
@@ -58,7 +73,7 @@ export const getKeywordOpportunitiesTool = {
   config: {
     title: "Get keyword opportunities",
     description:
-      "Ranks the project's Search Console queries by click potential: demand x CTR at position 3 (or at the current position when it is already better) minus the clicks the query brings today. Demand is the Search Console impressions when the average position is on page 1, since the site is then shown on nearly every search; below page 1 it is the local monthly search volume scaled to the window, or impressions when there is no volume. Volume is Google Ads search volume for the place of the project's oldest local rank tracker (volumeLocation), so a city business is not measured against national demand. Each row has volume, impressions, clicks, CTR, average Search Console position, the latest tracked position, the page that ranks and how many other pages compete for it. Needs a connected Search Console property. Volume lookups charge credits (one Google Ads call for up to 300 queries, about $0.09, cached 30 days per query and place).",
+      "Ranks the project's Search Console queries by click potential: demand x CTR at position 3 (or at the current position when it is already better) minus the clicks the query brings today. Demand is the Search Console impressions when the average position is on page 1, since the site is then shown on nearly every search; below page 1 it is the local monthly search volume scaled to the window, or impressions when there is no volume. Volume is Google Ads search volume for the place of the project's oldest local rank tracker (volumeLocation), so a city business is not measured against national demand. Brand searches (project name, domain name, brandTerms) are left out unless includeBrand. likelyMapPack marks queries with a Search Console position of 5 or better whose website is not in the tracked organic top 20: for a local business that position is usually the map pack. Each row has volume, impressions, clicks, CTR, average Search Console position, the latest tracked position, the page that ranks and how many other pages compete for it. Needs a connected Search Console property. Volume lookups charge credits (one Google Ads call for up to 300 queries, about $0.09, cached 30 days per query and place).",
     inputSchema,
     outputSchema: z
       .object({
@@ -97,16 +112,29 @@ export const getKeywordOpportunitiesTool = {
           dateRange: args.dateRange ?? "last_28_days",
           minImpressions: args.minImpressions ?? 5,
           limit: args.limit ?? 50,
+          brandTerms: [
+            context.project.name,
+            ...(context.project.domain
+              ? [context.project.domain.replace(/\.[a-z]+$/i, "")]
+              : []),
+            ...(args.brandTerms ?? []),
+          ],
+          includeBrand: args.includeBrand ?? false,
         },
         context.billing,
       );
       const lines = result.rows.map(
         (row) =>
-          `- ${row.query}: potential ${row.clickPotential} clicks · volume ${row.searchVolume ?? "?"} · ${row.impressions} impr · ${row.clicks} clicks · GSC pos ${row.gscPosition ?? "?"} · tracked ${row.trackedPosition ?? "-"} · ${row.page ?? "no page"}${row.otherPages > 0 ? ` (+${row.otherPages} other pages)` : ""}`,
+          `- ${row.query}: potential ${row.clickPotential} clicks · volume ${row.searchVolume ?? "?"} · ${row.impressions} impr · ${row.clicks} clicks · GSC pos ${row.gscPosition ?? "?"} · tracked ${row.trackedPosition ?? "-"} · ${row.page ?? "no page"}${row.otherPages > 0 ? ` (+${row.otherPages} other pages)` : ""}${row.likelyMapPack ? " · likely map pack, website not in organic top 20" : ""}${row.isBrand ? " · brand" : ""}`,
       );
       return mcpResponse({
         text: [
           `${result.siteUrl} · ${result.startDate}→${result.endDate} · ${result.queriesConsidered} queries · volume for ${result.volumeLocation ?? "the project country"} · potential = clicks at position ${result.targetPosition} (or the current position if better) minus today's clicks`,
+          ...(result.brandQueriesExcluded > 0
+            ? [
+                `${result.brandQueriesExcluded} brand queries left out (includeBrand to show them).`,
+              ]
+            : []),
           ...(lines.length > 0
             ? lines
             : ["No queries above the impression floor."]),

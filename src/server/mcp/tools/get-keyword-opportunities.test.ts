@@ -45,6 +45,8 @@ describe("get_keyword_opportunities", () => {
   beforeEach(() => {
     mocks.getProjectForOrganization.mockResolvedValue({
       id: "project_1",
+      name: "Osteopathie im Kontor",
+      domain: "own.de",
       locationCode: 2276,
       languageCode: "de",
     });
@@ -78,6 +80,13 @@ describe("get_keyword_opportunities", () => {
           clicks: 10,
           impressions: 100,
           position: 1.5,
+        },
+        // Brand search: left out.
+        {
+          keys: ["osteopathie im kontor", "https://own.de/"],
+          clicks: 30,
+          impressions: 400,
+          position: 1,
         },
       ],
     });
@@ -116,6 +125,7 @@ describe("get_keyword_opportunities", () => {
     expect(result.structuredContent).toMatchObject({
       ok: true,
       volumeLocation: "Hamburg,Hamburg,Germany",
+      brandQueriesExcluded: 1,
       rows: [
         expect.objectContaining({
           query: "osteopathie hamburg",
@@ -130,6 +140,8 @@ describe("get_keyword_opportunities", () => {
           query: "osteopathie in der nähe",
           clickPotential: 13,
           searchVolume: 40500,
+          likelyMapPack: true,
+          isBrand: false,
         }),
         expect.objectContaining({ query: "oik hamburg", clickPotential: 5 }),
       ],
