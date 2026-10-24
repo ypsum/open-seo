@@ -211,6 +211,90 @@ describe("rank check task queue", () => {
       },
     });
   });
+
+  it("reads competitor positions off the same page and crawls without stopping", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        status_code: 20000,
+        tasks: [
+          {
+            id: "task-a",
+            status_code: 20000,
+            cost: 0,
+            path: ["v3", "serp", "google", "organic", "task_get", "advanced"],
+            result: [
+              {
+                items: [
+                  {
+                    type: "organic",
+                    rank_group: 1,
+                    domain: "rival.de",
+                    url: "https://rival.de/",
+                  },
+                  {
+                    type: "organic",
+                    rank_group: 2,
+                    domain: "www.example.com",
+                    url: "https://www.example.com/",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const outcome = await fetchRankCheckTaskResult({
+      taskId: "task-a",
+      keywordId: "kw-1",
+      keyword: "alpha",
+      targetDomain: "example.com",
+      competitorDomains: ["rival.de", "absent.de"],
+    });
+
+    expect(outcome).toMatchObject({
+      status: "completed",
+      result: {
+        position: 2,
+        competitors: [
+          { domain: "rival.de", position: 1, url: "https://rival.de/" },
+          { domain: "absent.de", position: null, url: null },
+        ],
+      },
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          status_code: 20000,
+          tasks: [
+            {
+              id: "t",
+              status_code: 20100,
+              cost: 0,
+              data: { tag: "kw-1:desktop" },
+            },
+          ],
+        }),
+      ),
+    );
+    await postRankCheckTasks({
+      tasks: [{ keyword: "alpha", keywordId: "kw-1", device: "desktop" }],
+      locationCode: 2840,
+      languageCode: "en",
+      depth: 20,
+      targetDomain: "example.com",
+      competitorDomains: ["rival.de"],
+    });
+    expect(
+      JSON.stringify(
+        parseDataforseoRequestBody(vi.mocked(fetch).mock.calls[0]?.[1]),
+      ),
+    ).not.toContain("stop_crawl_on_match");
+  });
 });
 
 describe("Maps task queue", () => {

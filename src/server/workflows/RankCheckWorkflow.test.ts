@@ -36,6 +36,10 @@ vi.mock("@/server/workflows/rankCheckPaths", () => ({
   runQueuedCheck: vi.fn(),
   retryRankChecks: vi.fn(),
 }));
+vi.mock("@/server/features/rank-tracking/services/rankCompetitorStore", () => ({
+  saveCompetitorPositions: vi.fn(),
+  listCompetitorDomains: vi.fn(async () => []),
+}));
 vi.mock("@/server/workflows/pgStep", () => ({
   pgStep: (
     _step: unknown,
