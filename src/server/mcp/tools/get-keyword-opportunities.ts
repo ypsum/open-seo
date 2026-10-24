@@ -58,7 +58,7 @@ export const getKeywordOpportunitiesTool = {
   config: {
     title: "Get keyword opportunities",
     description:
-      "Ranks the project's Search Console queries by click potential: the clicks a query would bring at position 3 (monthly search volume scaled to the window x CTR at position 3, or Search Console impressions x that CTR when there is no volume) minus the clicks it brings today. Each row has volume, impressions, clicks, CTR, average Search Console position, the latest tracked position, the page that ranks and how many other pages compete for it. Queries without volume are kept. Needs a connected Search Console property. Volume lookups charge credits (one Labs call for up to 300 queries, cached 30 days per query).",
+      "Ranks the project's Search Console queries by click potential: demand x CTR at position 3 (or at the current position when it is already better) minus the clicks the query brings today. Demand is the Search Console impressions when the average position is on page 1, since the site is then shown on nearly every search; below page 1 it is the local monthly search volume scaled to the window, or impressions when there is no volume. Volume is Google Ads search volume for the place of the project's oldest local rank tracker (volumeLocation), so a city business is not measured against national demand. Each row has volume, impressions, clicks, CTR, average Search Console position, the latest tracked position, the page that ranks and how many other pages compete for it. Needs a connected Search Console property. Volume lookups charge credits (one Google Ads call for up to 300 queries, about $0.09, cached 30 days per query and place).",
     inputSchema,
     outputSchema: z
       .object({
@@ -106,7 +106,7 @@ export const getKeywordOpportunitiesTool = {
       );
       return mcpResponse({
         text: [
-          `${result.siteUrl} · ${result.startDate}→${result.endDate} · ${result.queriesConsidered} queries · potential = clicks at position ${result.targetPosition} minus today's clicks`,
+          `${result.siteUrl} · ${result.startDate}→${result.endDate} · ${result.queriesConsidered} queries · volume for ${result.volumeLocation ?? "the project country"} · potential = clicks at position ${result.targetPosition} (or the current position if better) minus today's clicks`,
           ...(lines.length > 0
             ? lines
             : ["No queries above the impression floor."]),
