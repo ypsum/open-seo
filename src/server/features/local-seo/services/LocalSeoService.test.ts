@@ -116,7 +116,10 @@ beforeEach(async () => {
   );
 });
 
-async function trackerAndInput(gridSize: 3 | 5 = 3, keywords = ["bookstore"]) {
+async function trackerAndInput(
+  gridSize: 3 | 5 | 7 | 9 = 3,
+  keywords = ["bookstore"],
+) {
   const tracker = await LocalSeoService.createTracker(
     {
       projectId: customer.projectId,
@@ -157,7 +160,7 @@ async function searchedScan() {
 }
 
 describe("saved local SEO scans", () => {
-  it.each([3, 5] as const)(
+  it.each([3, 5, 7, 9] as const)(
     "checks all keywords once for grid width %s across repeated requests",
     async (gridSize) => {
       const { input } = await trackerAndInput(gridSize, [
