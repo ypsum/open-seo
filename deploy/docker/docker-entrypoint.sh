@@ -36,4 +36,6 @@ else
   printf '%s' "$FINGERPRINT" > "$FP_FILE"
 fi
 
-exec pnpm exec vite preview --host 0.0.0.0 --port "${PORT:-3001}"
+# The local preview runtime exposes scheduled handlers but does not emit cron
+# events by itself. The supervisor runs preview and the loopback scheduler together.
+exec node scripts/selfhost-scheduler.mjs

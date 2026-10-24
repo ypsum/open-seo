@@ -1,25 +1,24 @@
+import { useQuery } from "@tanstack/react-query";
 import { Link, createFileRoute, notFound } from "@tanstack/react-router";
-import { useCustomer } from "autumn-js/react";
 import { useState } from "react";
 import { ArrowRight, Tag } from "lucide-react";
 import { QueryError } from "@/client/components/QueryState";
 import { StatusScreen } from "@/client/components/StatusScreen";
 import { Button } from "@/client/components/ui/button";
+import { Skeleton } from "@/client/components/ui/skeleton";
+import {
+  billingAccountQueryOptions,
+  prefetchBillingAccount,
+} from "@/client/features/billing/billingAccountQuery";
 import { PlanPageAccountMenu } from "@/client/features/billing/PlanPageAccountMenu";
 import { PlanOfferCard } from "@/client/features/billing/PlanOfferCard";
 import {
   YC_PLAN_OFFER,
   monthlyCreditsFeature,
 } from "@/client/features/billing/plan-offers";
-import { buildCheckoutSuccessUrl } from "@/client/features/billing/checkout-url";
-import {
-  getCustomerPaidPlanId,
-  getCustomerPlanStatus,
-} from "@/client/features/billing/plan-detection";
-import { getBillingRouteState } from "@/client/features/billing/route-state";
+import { openPlanCheckout } from "@/client/features/billing/checkout";
 import { useCanManageBilling } from "@/client/features/team/organizationQueries";
 import { getStandardErrorMessage } from "@/client/lib/error-messages";
-import { captureClientEvent } from "@/client/lib/posthog";
 import { useSession } from "@/lib/auth-client";
 import { isHostedClientAuthMode } from "@/lib/auth-mode";
 import { BILLING_ROUTE } from "@/shared/billing";
@@ -33,54 +32,43 @@ const PLAN_FEATURES = [
 ];
 
 export const Route = createFileRoute("/_authenticated/yc")({
+  // The loader fills the module-scoped query client, so keep it out of server
+  // requests: one worker isolate must not cache another account's billing.
+  ssr: false,
   beforeLoad: () => {
     if (!isHostedClientAuthMode()) {
       throw notFound();
     }
   },
+  // Start the billing read alongside the session check, not after it.
+  loader: () => prefetchBillingAccount(),
   component: YcPlanPage,
 });
 
 function YcPlanPage() {
-  const { data: session, isPending: isSessionPending } = useSession();
+  const { data: session } = useSession();
   const [isAttaching, setIsAttaching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const hasSession = Boolean(session?.user?.id);
-  const customerQuery = useCustomer({
-    queryOptions: {
-      enabled: hasSession,
-    },
-  });
+  const accountQuery = useQuery(billingAccountQueryOptions());
+  const account = accountQuery.data;
 
   // Checkout is owner-only; other members are pointed at their organization
   // owner instead of a button that would 403.
   const canManageBilling = useCanManageBilling();
 
-  const routeState = getBillingRouteState({
-    hasSession,
-    isSessionPending,
-    isCustomerLoading: customerQuery.isLoading,
-    isCustomerError: customerQuery.isError,
-    hasCustomerData: customerQuery.data != null,
-  });
+  const isPaid = account?.planStatus === "paid";
+  const isOnYcPlan = account?.paidPlanId === YC_PLAN_OFFER.planId;
 
-  const isPaid = getCustomerPlanStatus(customerQuery.data) === "paid";
-  const isOnYcPlan =
-    getCustomerPaidPlanId(customerQuery.data) === YC_PLAN_OFFER.planId;
-
-  if (routeState === "loading") {
-    return null;
-  }
-
-  if (routeState === "error") {
+  // A failed refetch keeps the loaded page; only a failed first read stops.
+  if (accountQuery.isError && !account) {
     return (
       <StatusScreen logo title="Billing unavailable" size="sm">
         <QueryError
-          error={customerQuery.error}
+          cause={accountQuery.error}
           fallback="We couldn't verify your billing status right now. Please try again."
-          onRetry={() => void customerQuery.refetch()}
-          isRetrying={customerQuery.isFetching}
+          onRetry={() => void accountQuery.refetch()}
+          isRetrying={accountQuery.isFetching}
         />
       </StatusScreen>
     );
@@ -91,17 +79,12 @@ function YcPlanPage() {
     setIsAttaching(true);
 
     try {
-      captureClientEvent("billing:checkout_start", {
-        planId: YC_PLAN_OFFER.planId,
-      });
       // Existing subscribers switching plans land on Billing so they can see
       // the new plan; new subscribers go into the app.
-      await customerQuery.attach({
-        planId: YC_PLAN_OFFER.planId,
-        redirectMode: "always",
-        successUrl: buildCheckoutSuccessUrl(isPaid ? BILLING_ROUTE : "/"),
-        checkoutSessionParams: YC_PLAN_OFFER.checkoutSessionParams,
-      });
+      await openPlanCheckout(
+        YC_PLAN_OFFER.planId,
+        isPaid ? BILLING_ROUTE : "/",
+      );
     } catch (err) {
       setError(
         getStandardErrorMessage(
@@ -148,7 +131,10 @@ function YcPlanPage() {
           </p>
         ) : null}
 
-        {isOnYcPlan ? (
+        {!account ? (
+          // The offer is static; only the button depends on the current plan.
+          <Skeleton className="h-9 w-full" />
+        ) : isOnYcPlan ? (
           <p className="text-sm text-muted-foreground">
             You&rsquo;re already on the {YC_PLAN_OFFER.name}.{" "}
             <Link

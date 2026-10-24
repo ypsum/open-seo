@@ -1,26 +1,6 @@
-import type { PlanStatus } from "@/client/features/billing/plan-detection";
-
-export function getBillingRouteState(args: {
-  hasSession: boolean;
-  isSessionPending: boolean;
-  isCustomerLoading: boolean;
-  isCustomerError: boolean;
-  hasCustomerData: boolean;
-}) {
-  if (args.isSessionPending || !args.hasSession || args.isCustomerLoading) {
-    return "loading" as const;
-  }
-
-  // A failed refetch keeps the loaded page; the caller shows the error inline.
-  if (args.isCustomerError && !args.hasCustomerData) {
-    return "error" as const;
-  }
-
-  return "ready" as const;
-}
+import type { PlanStatus } from "@/shared/billing";
 
 export function getSubscribeRouteState(args: {
-  hasSession: boolean;
   isCustomerLoading: boolean;
   isCustomerError: boolean;
   hasCustomerData: boolean;
@@ -30,7 +10,7 @@ export function getSubscribeRouteState(args: {
   checkoutCompleted: boolean;
   finalizingTimedOut: boolean;
 }) {
-  if (!args.hasSession || args.isCustomerLoading) {
+  if (args.isCustomerLoading) {
     return "loading" as const;
   }
 

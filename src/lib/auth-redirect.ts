@@ -1,16 +1,18 @@
-const OAUTH_AUTHORIZE_PATH = "/api/auth/oauth2/authorize";
+export const OAUTH_AUTHORIZE_PATH = "/api/auth/oauth2/authorize";
 const OAUTH_SIGNED_QUERY_END = "sig";
 const OAUTH_AUTHORIZE_MARKERS = ["response_type", "client_id", "redirect_uri"];
 
 export function normalizeAuthRedirect(value: string | null | undefined) {
-  // Backslashes are rejected because URL parsers treat them as slashes:
-  // "/\evil.com" resolves cross-origin, an open redirect via
+  // Backslashes are rejected because URL parsers treat them as slashes, and
+  // tabs and newlines because URL parsers strip them: "/\evil.com" and
+  // "/\t/evil.com" both resolve cross-origin, an open redirect via
   // window.location sinks.
   if (
     !value ||
     !value.startsWith("/") ||
     value.startsWith("//") ||
-    value.includes("\\")
+    value.includes("\\") ||
+    /[\t\n\r]/.test(value)
   ) {
     return "/";
   }

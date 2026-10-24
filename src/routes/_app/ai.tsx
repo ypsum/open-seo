@@ -42,6 +42,14 @@ const SKILLS = [
     "seo-audit",
     "One-page site audit built around a single do-this-week action.",
   ],
+  [
+    "ai-visibility-audit",
+    "Finds the few changes most likely to get you cited in AI answers.",
+  ],
+  [
+    "ai-prompt-research",
+    "Finds what people ask ChatGPT about your market and who gets cited.",
+  ],
   ["keyword-research", "Finds keyword opportunities from a few seed topics."],
   ["keyword-clustering", "Groups keywords by intent and maps them to pages."],
   ["competitive-landscape", "Maps who wins in your market and why."],

@@ -1,7 +1,7 @@
 import type { PageFetchClass } from "@/shared/audit-fetch-class";
 
-// Bot protection that answers 2xx with a challenge in place of the page:
-// Cloudflare's interstitial, and SiteGround's sgcaptcha redirect (a 202).
+// Challenge pages that can arrive with a 200, as a renderer hands them back:
+// Cloudflare's interstitial, and SiteGround's sgcaptcha redirect.
 const CHALLENGE_2XX =
   /<title>\s*(?:just a moment\.\.\.|attention required! \| cloudflare)\s*<\/title>|\/\.well-known\/sgcaptcha\//i;
 
@@ -25,6 +25,9 @@ export function classifyFetch(
   if (statusCode === 429) return "rate_limited";
   if (mitigated) return "blocked";
   if (statusCode === 401 || statusCode === 403) return "blocked";
+  // Real pages aren't served as 202 Accepted; bot challenges are (SiteGround,
+  // AWS WAF).
+  if (statusCode === 202) return "blocked";
   if (statusCode >= 200 && statusCode < 300 && CHALLENGE_2XX.test(bodySnippet))
     return "blocked";
   if (statusCode === 503) {

@@ -71,6 +71,10 @@ vi.mock("@/server/lib/posthog", () => ({
   captureServerEvent: vi.fn(),
 }));
 
+vi.mock("@/server/email/onboarding-drip", () => ({
+  sendCreditsExhaustedEvent: vi.fn(),
+}));
+
 // Mock every section module the client wraps so meterDataforseoCall's
 // `execute()` resolves to a controllable fixture.
 vi.mock("@/server/lib/dataforseo/labs", () => ({
@@ -88,6 +92,7 @@ vi.mock("@/server/lib/dataforseo/serp", () => ({
   fetchRankCheckSerp: vi.fn(),
   postRankCheckTasks: vi.fn(),
   fetchLocalSerp: vi.fn(),
+  postLocalSerpTasks: vi.fn(),
   clampSerpDepth: (depth: number) => depth,
   SERP_ANALYSIS_DEPTH: 20,
 }));
@@ -409,6 +414,10 @@ describe("mapDataforseoPathToCreditFeature", () => {
     ["v3/ai_optimization/llm_mentions/search/live", "ai_citations"],
     ["v3/ai_optimization/llm_mentions/aggregated_metrics/live", "ai_citations"],
     ["v3/ai_optimization/llm_mentions/top_pages/live", "ai_citations"],
+    [
+      "v3/ai_optimization/ai_keyword_data/keywords_search_volume/live",
+      "keyword_research",
+    ],
     ["v3/ai_optimization/chat_gpt/llm_responses/live", "ai_prompt_responses"],
     ["v3/ai_optimization/claude/llm_responses/live", "ai_prompt_responses"],
     ["v3/ai_optimization/gemini/llm_responses/live", "ai_prompt_responses"],

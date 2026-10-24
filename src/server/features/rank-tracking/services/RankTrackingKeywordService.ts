@@ -127,6 +127,21 @@ async function removeKeywords(
   return { removed: removedIds.length, removedIds };
 }
 
+async function setKeywordsPinned(
+  configId: string,
+  projectId: string,
+  keywordIds: string[],
+  pinned: boolean,
+) {
+  await getValidatedConfig(configId, projectId);
+  const updatedIds = await RankTrackingRepository.setKeywordsPinned(
+    [...new Set(keywordIds)],
+    configId,
+    pinned,
+  );
+  return { updated: updatedIds.length, updatedIds };
+}
+
 async function estimateCost(
   configId: string,
   projectId: string,
@@ -188,12 +203,13 @@ function scheduledApprovalError(
 ) {
   return new AppError(
     "VALIDATION_ERROR",
-    `Adding these keywords would make each ${scheduleInterval} scheduled check cost a nominal queued estimate of ${estimate.costCredits} credits (~$${estimate.costUsd.toFixed(4)} per check; ~${estimate.monthlyCostCredits} credits/month). Call estimate_rank_tracker_cost with additionalKeywords, show the recurring estimate and live-fallback caveat to the user, then retry with maxEstimatedScheduledCheckCredits set to the approved per-check estimate. Live fallback for rejected, failed, or timed-out queued tasks may use additional separately billed credits.`,
+    `Adding these keywords would make each ${scheduleInterval} scheduled check cost up to ${estimate.costCredits} credits including retries (~$${estimate.costUsd.toFixed(4)} per check; up to ~${estimate.monthlyCostCredits} credits/month). Call estimate_rank_tracker_cost with additionalKeywords, show the recurring estimate to the user, then retry with maxEstimatedScheduledCheckCredits set to the approved per-check estimate.`,
   );
 }
 
 export const RankTrackingKeywordService = {
   addKeywords,
   removeKeywords,
+  setKeywordsPinned,
   estimateCost,
 };

@@ -27,17 +27,19 @@ export function CountryCombobox({
   id,
   value,
   onChange,
+  options = LOCATION_OPTIONS,
 }: {
   id?: string;
   value: number;
   onChange: (locationCode: number) => void;
+  /** Defaults to the full country list. */
+  options?: readonly LocationOption[];
 }) {
-  const country =
-    LOCATION_OPTIONS.find((option) => option.code === value) ?? null;
+  const country = options.find((option) => option.code === value) ?? null;
 
   return (
     <Combobox
-      items={LOCATION_OPTIONS}
+      items={options}
       value={country}
       itemToStringLabel={(option) => option.label}
       autoHighlight

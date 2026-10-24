@@ -1,10 +1,15 @@
 import { useMemo, useState } from "react";
-import { Copy, Download } from "lucide-react";
+import { Copy, Download, ExternalLink } from "lucide-react";
 import { reverse, sortBy } from "remeda";
 import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { QueryState } from "@/client/components/QueryState";
 import { Skeleton } from "@/client/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/client/components/ui/tooltip";
 import { Button } from "@/client/components/ui/button";
 import {
   Dialog,
@@ -29,6 +34,7 @@ import { getRankKeywordHistory } from "@/serverFunctions/rank-tracking";
 import type { RankKeywordHistoryPoint } from "@/serverFunctions/rank-tracking";
 import { LOCATIONS } from "@/client/features/keywords/locations";
 import { formatLocationLabel } from "@/shared/keyword-locations";
+import { googleSerpUrl } from "@/shared/google-serp-url";
 import { csvChange, DeviceRankCell } from "./RankTrackingTableParts";
 import {
   RankTrendChart,
@@ -56,6 +62,7 @@ export function KeywordTrendModal({
   configId,
   domain,
   locationCode,
+  languageCode,
   locationName,
   serpDepth,
   onClose,
@@ -65,6 +72,7 @@ export function KeywordTrendModal({
   configId: string;
   domain: string;
   locationCode: number;
+  languageCode: string;
   locationName?: string;
   serpDepth: number;
   onClose: () => void;
@@ -120,7 +128,7 @@ export function KeywordTrendModal({
   );
 
   // Keys ("<ts>:<device>") whose plotted point sits in the bottom band because
-  // the real position was null — so the tooltip can say "Not in top N"
+  // the real position was null — so the tooltip can say "Not found"
   // unambiguously even when a genuine position equals serpDepth.
   const bottomBandKeys = useMemo(() => {
     const keys = new Set<string>();
@@ -172,7 +180,29 @@ export function KeywordTrendModal({
               &middot; Position over time
             </DialogDescription>
           </div>
-          <TrendRangeToggle value={sinceDays} onChange={setSinceDays} />
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              title="Search this keyword on Google with the tracked language, country, and city"
+              render={
+                <a
+                  href={googleSerpUrl(target.keyword, {
+                    locationCode,
+                    languageCode,
+                    locationName,
+                  })}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                />
+              }
+            >
+              <ExternalLink data-icon="inline-start" />
+              Open on Google
+            </Button>
+            <TrendRangeToggle value={sinceDays} onChange={setSinceDays} />
+          </div>
         </DialogHeader>
 
         <QueryState
@@ -203,7 +233,7 @@ export function KeywordTrendModal({
                       typeof item.dataKey === "string" &&
                       bottomBandKeys.has(`${checkedAt}:${item.dataKey}`) ? (
                       <span className="font-normal text-muted-foreground">
-                        Not in top {serpDepth}
+                        Not found
                       </span>
                     ) : (
                       String(value)
@@ -252,9 +282,19 @@ export function KeywordTrendModal({
                             )}
                             <TableCell>
                               {r.position === null ? (
-                                <span className="text-xs text-muted-foreground">
-                                  Not in top {serpDepth}
-                                </span>
+                                <Tooltip>
+                                  <TooltipTrigger
+                                    delay={150}
+                                    render={
+                                      <span className="cursor-help text-xs text-muted-foreground underline decoration-dotted underline-offset-2" />
+                                    }
+                                  >
+                                    Not found
+                                  </TooltipTrigger>
+                                  <TooltipContent>
+                                    Not ranking, or incomplete results
+                                  </TooltipContent>
+                                </Tooltip>
                               ) : (
                                 <span className="font-mono text-sm">
                                   {r.position}

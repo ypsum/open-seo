@@ -1,44 +1,15 @@
 import { buttonVariants } from "@/client/components/ui/button";
-import { Skeleton } from "@/client/components/ui/skeleton";
+import { SkeletonTableRows } from "@/client/components/SkeletonPresets";
 
 // Shared building blocks for the dashboard cards.
-export function StatGridSkeleton({
-  tileClassName = "h-20",
-}: {
-  tileClassName?: string;
-}) {
-  return (
-    <div className="grid grid-cols-2 gap-3" aria-busy>
-      {Array.from({ length: 4 }, (_, i) => (
-        <Skeleton key={i} className={tileClassName} />
-      ))}
-    </div>
-  );
-}
-
-export function EmptyCardBody({
-  message,
-  cta,
-}: {
-  message: string;
-  cta: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-1 flex-col gap-3">
-      <p className="text-sm text-muted-foreground">{message}</p>
-      <div className="mt-auto flex justify-end">{cta}</div>
-    </div>
-  );
+export function MetricsTableSkeleton() {
+  return <SkeletonTableRows rows={5} columns={3} />;
 }
 
 export const moreDetailsClass = buttonVariants({
   variant: "ghost",
   size: "xs",
 });
-
-export function newLost(value: number | null): string {
-  return value === null ? "—" : String(value);
-}
 
 export function formatDay(timestamp: string): string {
   const ms = Date.parse(

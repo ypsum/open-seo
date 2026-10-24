@@ -1,5 +1,6 @@
 /* eslint-disable max-lines, max-lines-per-function -- one spec covers every service-backed MCP text table */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { reverse } from "remeda";
 import * as researchTools from "./dataforseo-research-tools";
 import { getBacklinksOverviewTool } from "./get-backlinks-overview";
 import { getDomainKeywordSuggestionsTool } from "./get-domain-keyword-suggestions";
@@ -11,7 +12,6 @@ import {
 } from "./google-analytics-tools";
 import { getRankTrackerTool } from "./get-rank-tracker";
 import { getBusinessUpdatesTool } from "./local-seo-tools";
-import { getSerpResultsTool } from "./get-serp-results";
 import { makeToolContext, textContent } from "./tool-test-support";
 import { makeGa4ReportResult } from "@/server/features/ga4/services/ga4-test-fixtures";
 import type * as backlinksTargetModule from "@/server/lib/dataforseoBacklinksTarget";
@@ -45,7 +45,6 @@ vi.mock("@/server/lib/dataforseo", async () => {
     createDataforseoClient: mocks.createDataforseoClient,
     fetchBusinessDataTaskResult: mocks.fetchBusinessDataTaskResult,
     normalizeBacklinksTarget: targets.normalizeBacklinksTarget,
-    SERP_ANALYSIS_DEPTH: 20,
   };
 });
 vi.mock("@/server/features/projects/services/ProjectService", () => ({
@@ -112,6 +111,8 @@ describe("MCP tool text output (service-backed tools)", () => {
       overview: {
         summary: {
           backlinks: 1200,
+          newBacklinks: 30,
+          lostBacklinks: 7,
           referringDomains: 340,
           referringPages: 900,
           rank: 55,
@@ -125,6 +126,9 @@ describe("MCP tool text output (service-backed tools)", () => {
           backlinks: 42,
           referringPages: 5,
           rank: 30,
+          spamScore: 12,
+          brokenBacklinks: 1,
+          firstSeen: "2019-03-05 07:34:01 +00:00",
         },
       ],
     });
@@ -134,8 +138,11 @@ describe("MCP tool text output (service-backed tools)", () => {
     );
 
     const out = textContent(result);
-    expect(out).toContain("domain | backlinks | referring pages | rank");
-    expect(out).toContain("linker.example | 42 | 5 | 30");
+    expect(out).toContain(
+      "domain | backlinks | referring pages | rank | spam | broken | first seen",
+    );
+    expect(out).toContain("- backlinks: 1200 (new 30 / lost 7)");
+    expect(out).toContain("linker.example | 42 | 5 | 30 | 12 | 1 | 2019-03-05");
   });
 
   it("get_rank_tracker renders every tracked-keyword row (detail view)", async () => {
@@ -169,6 +176,73 @@ describe("MCP tool text output (service-backed tools)", () => {
       "keyword | desktop | prev (desktop) | mobile | prev (mobile)",
     );
     expect(out).toContain("seo tools | 3 | 5 | 7 | —");
+  });
+
+  it("get_rank_tracker pages through every removal id in a large tracker", async () => {
+    const rows = Array.from({ length: 230 }, (_, index) => ({
+      keyword: `keyword ${String(index).padStart(3, "0")}`,
+      trackingKeywordId: `tracked-${index}`,
+      desktop: {
+        position: 3,
+        previousPosition: 5,
+        rankingUrl: `https://example.com/${"x".repeat(500)}`,
+      },
+      mobile: null,
+    }));
+    mocks.getTracker.mockResolvedValue({
+      config: {
+        id: "tracker_1",
+        domain: "example.com",
+        scheduleInterval: "daily",
+        devices: "desktop",
+        serpDepth: 20,
+      },
+      results: { rows: reverse(rows), run: null },
+    });
+    const initial = await getRankTrackerTool.handler(
+      { projectId: "project_1", trackerId: "tracker_1" },
+      toolContext,
+    );
+    expect(textContent(initial)).toContain("truncated");
+    expect(textContent(initial)).toContain(
+      "repeat offset=0 with a smaller limit",
+    );
+    const ids: unknown[] = [];
+    let offset: number | null = 0;
+    while (offset !== null) {
+      const result = await getRankTrackerTool.handler(
+        { projectId: "project_1", trackerId: "tracker_1", offset, limit: 25 },
+        toolContext,
+      );
+      const page = getRankTrackerTool.config.outputSchema.parse(
+        result.structuredContent,
+      ).results;
+      if (!page) throw new Error("Expected tracker results");
+      expect(page.totalCount).toBe(230);
+      expect(page.rows.length).toBeLessThanOrEqual(25);
+      for (const row of page.rows) {
+        expect(textContent(result)).toContain(
+          `${String(row.trackingKeywordId)} |`,
+        );
+        ids.push(row.trackingKeywordId);
+      }
+      if (page.nextOffset !== null) {
+        expect(page.nextOffset).toBeGreaterThan(offset);
+        expect(textContent(result)).toContain(
+          `Next page: offset=${page.nextOffset}`,
+        );
+      }
+      offset = page.nextOffset;
+    }
+    expect(ids).toEqual(rows.map((row) => row.trackingKeywordId));
+    const beyond = await getRankTrackerTool.handler(
+      { projectId: "project_1", trackerId: "tracker_1", offset: 500 },
+      toolContext,
+    );
+    expect(textContent(beyond)).toContain("No keywords at this offset");
+    expect(beyond.structuredContent).toMatchObject({
+      results: { rows: [], nextOffset: null },
+    });
   });
 
   it("get_rank_tracker surfaces the latest run failure", async () => {
@@ -217,9 +291,15 @@ describe("MCP tool text output (service-backed tools)", () => {
           keyword_data: {
             keyword: "seo tools",
             keyword_info: { search_volume: 1000, cpc: 3.2 },
+            keyword_properties: { keyword_difficulty: 55 },
+            search_intent_info: { main_intent: "commercial" },
           },
           ranked_serp_element: {
-            serp_item: { rank_absolute: 4, url: "https://example.com/tools" },
+            serp_item: {
+              rank_absolute: 4,
+              url: "https://example.com/tools",
+              etv: 120.5,
+            },
           },
         },
       ],
@@ -236,9 +316,11 @@ describe("MCP tool text output (service-backed tools)", () => {
     );
 
     const out = textContent(result);
-    expect(out).toContain("keyword | rank | volume | CPC | url");
     expect(out).toContain(
-      "seo tools | 4 | 1000 | 3.20 | https://example.com/tools",
+      "keyword | rank | volume | KD | intent | CPC | traffic | url",
+    );
+    expect(out).toContain(
+      "seo tools | 4 | 1000 | 55 | commercial | 3.20 | 120.50 | https://example.com/tools",
     );
   });
 
@@ -254,8 +336,12 @@ describe("MCP tool text output (service-backed tools)", () => {
           {
             rank_absolute: 1,
             post_date: "04/02/2020 00:00:00",
+            author: "Acme Cafe",
             post_text: "We are open for takeaway.",
             url: "https://search.google.com/local/posts?q=acme",
+            links: [
+              { type: "Order online", url: "https://acme.example/order" },
+            ],
           },
         ],
       },
@@ -267,37 +353,10 @@ describe("MCP tool text output (service-backed tools)", () => {
     );
 
     const out = textContent(result);
-    expect(out).toContain("# | posted | post | url");
+    expect(out).toContain("# | posted | author | post | url | links");
     expect(out).toContain(
-      "1 | 04/02/2020 00:00:00 | We are open for takeaway. | https://search.google.com/local/posts?q=acme",
+      "1 | 04/02/2020 00:00:00 | Acme Cafe | We are open for takeaway. | https://search.google.com/local/posts?q=acme | Order online → https://acme.example/order",
     );
-  });
-
-  it("get_serp_results crawls and returns rows to the requested depth", async () => {
-    const live = vi.fn().mockResolvedValue(
-      Array.from({ length: 40 }, (_, index) => ({
-        type: "organic",
-        rank_absolute: index + 1,
-        title: `Result ${index + 1}`,
-        url: `https://example.com/${index + 1}`,
-        domain: "example.com",
-        description: "desc",
-      })),
-    );
-    mocks.createDataforseoClient.mockReturnValue({ serp: { live } });
-
-    const result = await getSerpResultsTool.handler(
-      {
-        projectId: "project_1",
-        queries: [{ keyword: "seo tools" }],
-        depth: 30,
-      },
-      toolContext,
-    );
-
-    expect(live).toHaveBeenCalledWith(expect.objectContaining({ depth: 30 }));
-    // Rows are trimmed to the depth that was crawled, not the fixed top 20.
-    expect(textContent(result)).toContain('"seo tools" (30 results)');
   });
 
   it("get_google_analytics_organic_landing_pages renders every fetched row and points at offset paging", async () => {
@@ -424,6 +483,7 @@ describe("MCP tool text output (service-backed tools)", () => {
       previous: null,
       comparison: {},
       trend: [],
+      diagnostics: [],
     });
 
     const result = await getGoogleAnalyticsOrganicOverviewTool.handler(

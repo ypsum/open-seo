@@ -1,7 +1,8 @@
 // Fork patch (ypsum): run AUTH_MODE=hosted without Autumn.
 //
-// With OPENSEO_DISABLE_BILLING=1 the Autumn facade (autumn.ts) and the
-// /api/autumn route answer locally: every org is on the paid plan with an
+// With OPENSEO_DISABLE_BILLING=1 the Autumn facade (autumn.ts), which every
+// billing read and the /api/autumn route go through, answers locally: every
+// org is on the paid plan with an
 // unlimited credit balance, and nothing is metered. DataForSEO is paid
 // directly, so the real spend lives in the DataForSEO account.
 import {
@@ -91,24 +92,4 @@ export function disabledBillingCheck(params: {
     balance: unlimitedBalance(params.featureId),
     flag: null,
   };
-}
-
-/** Local answers for the /api/autumn routes the React client reads. */
-export function disabledBillingRouteResponse(
-  route: string,
-  customerId: string,
-): unknown {
-  switch (route) {
-    case "getOrCreateCustomer":
-    case "getEntity":
-      return disabledBillingCustomer(customerId);
-    case "listPlans":
-      return { list: [] };
-    case "listEvents":
-      return { list: [], nextCursor: null };
-    case "aggregateEvents":
-      return { list: [], total: {} };
-    default:
-      return undefined;
-  }
 }

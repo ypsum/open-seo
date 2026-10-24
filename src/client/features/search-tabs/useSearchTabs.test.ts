@@ -147,6 +147,26 @@ describe("parseStoredState", () => {
     expect(state.tabs[0].input).toMatchObject({ groupKeywords: true });
   });
 
+  it("restores prompt tabs and drops ones naming a model that no longer exists", () => {
+    const prompt = {
+      type: "prompt",
+      prompt: "What's the best free password manager?",
+      highlightBrand: "Bitwarden",
+      models: ["chat_gpt", "claude"],
+      webSearch: true,
+      webSearchCountryCode: "default",
+    };
+    const state = parseStoredState({
+      activeTabId: "tab-1",
+      tabs: [
+        persistedTab(prompt),
+        persistedTab({ ...prompt, models: ["bard"] }),
+      ],
+    });
+
+    expect(state.tabs.map((tab) => tab.input)).toEqual([prompt]);
+  });
+
   it("keeps the newest tabs when stored state exceeds the limit", () => {
     const state = parseStoredState({
       activeTabId: null,

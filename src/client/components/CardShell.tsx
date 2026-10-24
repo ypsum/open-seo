@@ -10,18 +10,18 @@ import {
 /**
  * Card with a header row and a divided body: dashboard and connection cards.
  * It fills its grid cell, and the body grows so content marked `mt-auto`
- * (action rows, the stamp) sits at the bottom of equal-height cards.
+ * (such as action rows) sits at the bottom of equal-height cards.
  */
 export function CardShell({
   title,
   icon,
-  stamp,
+  titleInfo,
   action,
   children,
 }: {
   title: string;
   icon?: ReactNode;
-  stamp?: string;
+  titleInfo?: ReactNode;
   action?: ReactNode;
   children: ReactNode;
 }) {
@@ -35,19 +35,13 @@ export function CardShell({
             </span>
           ) : null}
           <h2 className="leading-tight">{title}</h2>
+          {titleInfo}
         </CardTitle>
         {action ? (
           <CardAction className="self-center">{action}</CardAction>
         ) : null}
       </CardHeader>
-      <CardContent className="flex flex-1 flex-col">
-        {children}
-        {stamp ? (
-          <p className="mt-auto pt-4 text-[11px] text-muted-foreground">
-            {stamp}
-          </p>
-        ) : null}
-      </CardContent>
+      <CardContent className="flex flex-1 flex-col">{children}</CardContent>
     </Card>
   );
 }

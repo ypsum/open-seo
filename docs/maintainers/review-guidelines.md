@@ -1,7 +1,7 @@
 # Review guidelines
 
-Context for anyone or any agent reviewing an OpenSEO change: the merge-ready
-subagents, `/code-review`, and human reviewers. It began life as the
+Context for anyone or any agent reviewing an OpenSEO change: merge-ready,
+`/code-review`, and human reviewers. It began life as the
 repository's Greptile configuration; Greptile is no longer wired to this
 repository, but the invariants and the false-positive controls still describe
 how the codebase is meant to work. Keep this file high-signal: a review finding
@@ -55,6 +55,8 @@ Every billable hosted DataForSEO call uses createDataforseoClient with organizat
 Applies to: `src/shared/billing*.ts`, `src/shared/rank-tracking.ts`, `src/server.ts`, `src/server/billing/**`, `src/server/lib/chatAgent.ts`, `src/server/lib/dataforseoBillingClassification.ts`, `src/server/lib/openrouter.ts`, `src/server/lib/audit/lighthouse.ts`, `src/server/lib/dataforseo/**`, `src/server/features/**`, `src/server/mcp/**`, `src/server/workflows/**`, `src/serverFunctions/**`, `src/routes/api/autumn/**`.
 
 Every billable hosted provider path must check organization credits before paid execution and meter provider-reported spend through the established shared credit-spend helper after execution. A failed gate prevents the paid call. A bounded partial-success API may surface a failed billing check as an explicit item-level error, but it must not present the paid operation as successful. Authorization failures terminate the request. Never use a stale-positive cache that can authorize access or spend that a live check would deny, and ensure retries or Workflow replays cannot omit metering or double-charge.
+
+Build every Autumn billing request (attach, subscription updates, the customer portal, customer creation) on the server from fixed plan IDs and server-chosen parameters; a client may supply only narrow validated values such as a bounded top-up amount or a sanitized return path. Never forward a client-supplied request body to an Autumn call made with the secret key: its parameters include ways to change prices, skip payment, or enable a plan before it is paid, and an owner check does not help because every user owns their own organization.
 
 ### Untrusted outbound URLs
 

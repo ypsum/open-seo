@@ -1,13 +1,26 @@
-import { useState, type FormEvent } from "react";
+import { useCallback, useMemo, useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { identity, sortBy } from "remeda";
 import { Columns3, MessageSquare, SearchCheck, Sparkles } from "lucide-react";
-import { explorePrompt } from "@/serverFunctions/ai-search";
 import { useHostedPlanGate } from "@/client/features/billing/HostedPlanGate";
 import { ResearchPageShell } from "@/client/features/ai-search/ResearchPageShell";
+import { PromptTrackingWithoutUpgradeButton } from "@/client/features/ai-visibility/shared";
 import { PromptExplorerForm } from "@/client/features/ai-search/components/PromptExplorerForm";
+import { PromptExplorerLoadingState } from "@/client/features/ai-search/components/PromptExplorerLoadingState";
 import { PromptExplorerResults } from "@/client/features/ai-search/components/PromptExplorerResults";
+import {
+  PROMPT_EXPLORER_STALE_TIME_MS,
+  buildPromptExplorerQueryKey,
+  promptExplorerQueryFn,
+  type PromptExplorerSearch,
+} from "@/client/features/ai-search/promptExplorerQuery";
+import { SearchTabStrip } from "@/client/features/search-tabs/SearchTabStrip";
+import type {
+  PromptSearchTabInput,
+  SearchTabInput,
+} from "@/client/features/search-tabs/types";
+import { useSearchTabNavigation } from "@/client/features/search-tabs/useSearchTabNavigation";
 import { RecentSearches } from "@/client/components/RecentSearches";
 import { BackLink } from "@/client/components/PageHeader";
 import { formatModelLabel } from "@/shared/prompt-explorer-labels";
@@ -15,22 +28,16 @@ import { usePromptExplorerSearchHistory } from "@/client/hooks/usePromptExplorer
 import {
   BRAND_LOOKUP_MAX_INPUT_LENGTH,
   PROMPT_EXPLORER_MAX_PROMPT_LENGTH,
-  type PromptExplorerModel,
-  type WebSearchCountrySelection,
 } from "@/types/schemas/ai-search";
 
-type PromptExplorerFormValues = {
-  prompt: string;
-  highlightBrand: string;
-  models: PromptExplorerModel[];
-  webSearch: boolean;
-  webSearchCountryCode: WebSearchCountrySelection;
-};
+type PromptExplorerFormValues = PromptExplorerSearch;
 
 type Props = {
   projectId: string;
   urlState: PromptExplorerFormValues;
   onSubmit: (values: PromptExplorerFormValues) => void;
+  /** Clears the active search, back to recent searches. */
+  onClear: () => void;
 };
 
 const PROMPT_EXPLORER_BULLETS = [
@@ -51,7 +58,20 @@ const PROMPT_EXPLORER_BULLETS = [
   },
 ];
 
-export function PromptExplorerPage({ projectId, urlState, onSubmit }: Props) {
+// The strip truncates labels to its width; the tooltip shows the full prompt.
+function promptTabLabel(input: SearchTabInput) {
+  if (input.type !== "prompt") return "";
+  return input.models.length > 1
+    ? `${input.prompt} · ${input.models.length} models`
+    : input.prompt;
+}
+
+export function PromptExplorerPage({
+  projectId,
+  urlState,
+  onSubmit,
+  onClear,
+}: Props) {
   const planStatus = useHostedPlanGate();
   const [form, setForm] = useState<PromptExplorerFormValues>(urlState);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -66,36 +86,46 @@ export function PromptExplorerPage({ projectId, urlState, onSubmit }: Props) {
   const trimmedPrompt = urlState.prompt.trim();
   const hasActivePrompt = trimmedPrompt.length > 0;
 
+  const urlInput = useMemo<PromptSearchTabInput | null>(() => {
+    const prompt = urlState.prompt.trim();
+    if (!prompt) return null;
+    return {
+      type: "prompt",
+      ...urlState,
+      prompt,
+      highlightBrand: urlState.highlightBrand.trim(),
+    };
+  }, [urlState]);
+
+  const searchTabs = useSearchTabNavigation({
+    storageKey: `prompt-explorer:${projectId}`,
+    urlInput,
+    getLabel: promptTabLabel,
+    navigateToInput: useCallback(
+      (input: SearchTabInput | null) => {
+        if (input?.type !== "prompt") {
+          onClear();
+          return;
+        }
+        const { type: _type, ...search } = input;
+        onSubmit(search);
+      },
+      [onClear, onSubmit],
+    ),
+  });
+
   const exploreQuery = useQuery({
-    queryKey: [
-      "prompt-explorer",
-      projectId,
-      trimmedPrompt,
-      sortBy(urlState.models, identity()).join(","),
-      urlState.webSearch,
-      urlState.webSearchCountryCode,
-      urlState.highlightBrand.trim(),
-    ],
-    queryFn: () =>
-      explorePrompt({
-        data: {
-          projectId,
-          prompt: trimmedPrompt,
-          models: urlState.models,
-          highlightBrand: urlState.highlightBrand.trim() || undefined,
-          webSearch: urlState.webSearch,
-          webSearchCountryCode:
-            urlState.webSearchCountryCode === "default"
-              ? undefined
-              : urlState.webSearchCountryCode,
-        },
-      }),
+    queryKey: buildPromptExplorerQueryKey(projectId, urlState),
+    queryFn: () => promptExplorerQueryFn(projectId, urlState),
     // Client-side gate is a UX optimization only; the paywall is enforced
-    // server-side (explorePrompt → assertPaidPlan) before any DataForSEO spend,
+    // in the shared service before any DataForSEO spend,
     // so a stale free-plan window here just yields a rejected request, not cost.
     enabled: hasActivePrompt && planStatus === "paid",
-    staleTime: 5 * 60 * 1000,
+    staleTime: PROMPT_EXPLORER_STALE_TIME_MS,
+    gcTime: PROMPT_EXPLORER_STALE_TIME_MS,
     retry: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
   });
 
   const handleSubmit = (event: FormEvent) => {
@@ -150,14 +180,17 @@ export function PromptExplorerPage({ projectId, urlState, onSubmit }: Props) {
 
   return (
     <ResearchPageShell
+      contained
       title="Prompt Explorer"
       description="Ask any prompt across ChatGPT, Claude, Gemini, and Perplexity side-by-side."
-      planStatus={planStatus}
       gate={{
         feature: "Prompt Explorer",
         description:
-          "Ask one prompt across ChatGPT, Claude, Gemini, and Perplexity at the same time and compare their answers — including which sources each model cites.",
-        bullets: PROMPT_EXPLORER_BULLETS,
+          "Ask one prompt across ChatGPT, Claude, Gemini, and Perplexity at the same time and compare their answers: including which sources each model cites.",
+        features: PROMPT_EXPLORER_BULLETS,
+        alternative: (
+          <PromptTrackingWithoutUpgradeButton projectId={projectId} />
+        ),
       }}
       form={
         <PromptExplorerForm
@@ -170,10 +203,22 @@ export function PromptExplorerPage({ projectId, urlState, onSubmit }: Props) {
           onWebSearchChange={(value) => updateForm("webSearch", value)}
           onCountryChange={(value) => updateForm("webSearchCountryCode", value)}
           onSubmit={handleSubmit}
-          isLoading={hasActivePrompt && exploreQuery.isPending}
           validationError={validationError}
         />
       }
+      tabs={
+        hasActivePrompt ? (
+          <SearchTabStrip
+            projectId={projectId}
+            activeTabId={searchTabs.activeTabId}
+            tabs={searchTabs.tabs}
+            onSelect={searchTabs.selectTab}
+            onClose={searchTabs.closeTab}
+            onViewed={searchTabs.markTabViewed}
+          />
+        ) : null
+      }
+      loadingState={<PromptExplorerLoadingState models={urlState.models} />}
       query={exploreQuery}
       hasActiveQuery={hasActivePrompt}
       errorFallback="Failed to load prompt results"

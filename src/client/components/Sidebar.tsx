@@ -1,4 +1,4 @@
-import { Link, useLocation } from "@tanstack/react-router";
+import { Link, useLocation, useMatchRoute } from "@tanstack/react-router";
 import type { LinkOptions } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ComponentType } from "react";
@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { organizationContextQueryOptions } from "@/client/features/team/organizationQueries";
 import { switchOrganization } from "@/serverFunctions/organization";
+import { clearLastProjectId } from "@/client/lib/active-project";
 import {
   connectNavGroup,
   getProjectNavGroups,
@@ -67,6 +68,15 @@ function SidebarNavLink({
   placeholder?: boolean;
 }) {
   const { setOpenMobile } = useSidebar();
+  const matchRoute = useMatchRoute();
+  const isPromptHistory =
+    linkProps.to === "/p/$projectId/ai-visibility" &&
+    Boolean(
+      matchRoute({
+        to: "/p/$projectId/ai-visibility/prompts/$promptId",
+        fuzzy: true,
+      }),
+    );
   const row = (isActive: boolean) => (
     <SidebarMenuButton
       render={<span />}
@@ -91,8 +101,11 @@ function SidebarNavLink({
             ...linkProps.activeOptions,
           }}
           onClick={() => setOpenMobile(false)}
+          inactiveProps={
+            isPromptHistory ? { "aria-current": "page" } : undefined
+          }
         >
-          {({ isActive }) => row(isActive)}
+          {({ isActive }) => row(isActive || isPromptHistory)}
         </Link>
       )}
     </SidebarMenuItem>
@@ -206,6 +219,9 @@ function AccountFooter({ ready }: { ready: boolean }) {
     setIsSwitching(true);
     try {
       await switchOrganization({ data: { organizationId } });
+      // The remembered project belongs to the old workspace; without this,
+      // "/" would open it before the access check bounces back.
+      clearLastProjectId();
       window.location.assign("/");
     } catch (error) {
       toast.error(getStandardErrorMessage(error));

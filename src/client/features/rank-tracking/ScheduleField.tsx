@@ -41,6 +41,8 @@ type Props = {
   onScheduleChange: (schedule: Schedule) => void;
   scheduleTime: LocalScheduleTime;
   onScheduleTimeChange: (scheduleTime: LocalScheduleTime) => void;
+  /** AI visibility pauses tracking instead of offering a manual schedule. */
+  allowManual?: boolean;
 };
 
 export function ScheduleField({
@@ -48,15 +50,19 @@ export function ScheduleField({
   onScheduleChange,
   scheduleTime,
   onScheduleTimeChange,
+  allowManual = true,
 }: Props) {
   const id = useId();
+  const items = allowManual
+    ? SCHEDULE_ITEMS
+    : SCHEDULE_ITEMS.filter((item) => item.value !== "manual");
   const [showScheduleTime, setShowScheduleTime] = useState(false);
 
   return (
     <Field>
       <FieldLabel htmlFor={id}>Schedule</FieldLabel>
       <Select
-        items={SCHEDULE_ITEMS}
+        items={items}
         value={schedule}
         onValueChange={(value) => {
           if (value) onScheduleChange(value);
@@ -66,7 +72,7 @@ export function ScheduleField({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {SCHEDULE_ITEMS.map((item) => (
+          {items.map((item) => (
             <SelectItem key={item.value} value={item.value}>
               {item.label}
             </SelectItem>

@@ -13,7 +13,14 @@ import {
 } from "@/client/components/table/TableBulkActionBar";
 import { TablePagination } from "@/client/components/table/TablePagination";
 import { Button } from "@/client/components/ui/button";
-import { Card } from "@/client/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/client/components/ui/table";
 import {
   buildDimensionColumns,
   buildStrikingColumns,
@@ -122,67 +129,59 @@ function positionDelta(current: number, previous: number): Delta {
   };
 }
 
-export function TotalsCards({ report }: { report: Report }) {
+export function TotalsTable({ report }: { report: Report }) {
   const { totals, prevTotals, range } = report;
-  const deltaTitle = `vs ${range.prevStartDate} to ${range.prevEndDate}`;
+  const deltaTitle = `Compared with ${range.prevStartDate} to ${range.prevEndDate}`;
+  const metrics = [
+    {
+      label: "Clicks",
+      value: formatCount(totals.clicks),
+      delta: percentDelta(totals.clicks, prevTotals.clicks),
+    },
+    {
+      label: "Impressions",
+      value: formatCount(totals.impressions),
+      delta: percentDelta(totals.impressions, prevTotals.impressions),
+    },
+    {
+      label: "Click-through rate",
+      value: formatCtr(totals.ctr),
+      delta: percentDelta(totals.ctr, prevTotals.ctr),
+    },
+    {
+      label: "Average position",
+      value: formatPosition(totals.position),
+      delta: positionDelta(totals.position, prevTotals.position),
+    },
+  ];
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      <TotalCard
-        label="Clicks"
-        value={formatCount(totals.clicks)}
-        delta={percentDelta(totals.clicks, prevTotals.clicks)}
-        deltaTitle={deltaTitle}
-      />
-      <TotalCard
-        label="Impressions"
-        value={formatCount(totals.impressions)}
-        delta={percentDelta(totals.impressions, prevTotals.impressions)}
-        deltaTitle={deltaTitle}
-      />
-      <TotalCard
-        label="CTR"
-        value={formatCtr(totals.ctr)}
-        delta={percentDelta(totals.ctr, prevTotals.ctr)}
-        deltaTitle={deltaTitle}
-      />
-      <TotalCard
-        label="Avg position"
-        value={formatPosition(totals.position)}
-        delta={positionDelta(totals.position, prevTotals.position)}
-        deltaTitle={deltaTitle}
-      />
+    <div className="rounded-xl border border-border bg-card p-4">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-full">Metric</TableHead>
+            <TableHead className="min-w-32 text-right">Value</TableHead>
+            <TableHead className="min-w-32 text-right" title={deltaTitle}>
+              Change
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {metrics.map(({ label, value, delta }) => (
+            <TableRow key={label}>
+              <TableCell>{label}</TableCell>
+              <TableCell className="text-right tabular-nums">{value}</TableCell>
+              <TableCell
+                className={`text-right tabular-nums ${delta ? (delta.improved ? "text-success" : "text-destructive") : "text-muted-foreground"}`}
+                title={deltaTitle}
+              >
+                {delta?.text ?? "—"}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
     </div>
-  );
-}
-
-function TotalCard({
-  label,
-  value,
-  delta,
-  deltaTitle,
-}: {
-  label: string;
-  value: string;
-  delta: Delta;
-  deltaTitle: string;
-}) {
-  return (
-    <Card className="gap-0 p-4">
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-1 flex items-baseline gap-2">
-        <span className="text-2xl font-semibold">{value}</span>
-        {delta ? (
-          <span
-            className={`text-xs ${delta.improved ? "text-success" : "text-destructive"}`}
-            title={deltaTitle}
-          >
-            {delta.text}
-          </span>
-        ) : null}
-      </div>
-    </Card>
   );
 }
 

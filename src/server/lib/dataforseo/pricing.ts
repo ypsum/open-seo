@@ -32,6 +32,7 @@ import {
   fetchLiveSerp,
   fetchLocalSerp,
   fetchRankCheckSerp,
+  postLocalSerpTasks,
   postRankCheckTasks,
   SERP_ANALYSIS_DEPTH,
 } from "@/server/lib/dataforseo/serp";
@@ -46,6 +47,14 @@ import {
   resolveLlmMentionsLimit,
 } from "@/server/lib/dataforseo/ai";
 import type { LlmResponseModelSlug } from "@/server/lib/dataforseo/llm-models";
+import {
+  fetchAiTrackingLiveAnswer,
+  postAiTrackingTasks,
+} from "@/server/lib/dataforseo/ai-tracking";
+import {
+  AI_LIVE_RECORD_COST_USD,
+  AI_RECORD_COST_USD,
+} from "@/shared/ai-visibility";
 import {
   costPerSerpAtDepth,
   serpKeywordCostMultiplier,
@@ -126,11 +135,23 @@ const LLM_RESPONSE_USD: Record<
   perplexity: { webSearch: 0.04, noSearch: 0.04 },
 };
 
+/** Estimated USD for one live LLM response at the 4096-token output cap. */
+export function llmResponseUsd(
+  modelSlug: LlmResponseModelSlug,
+  webSearch: boolean,
+): number {
+  const price = LLM_RESPONSE_USD[modelSlug];
+  return webSearch ? price.webSearch : price.noSearch;
+}
+
 // SERP Google Maps and Local Finder, live. measured: Maps bills one request
 // through depth 100 ($0.002 at depth 20 and 100), and no caller asks for
 // more. Local Finder bills every page of 10 at the first-page rate ($0.02 at
 // depth 100).
 const LOCAL_SERP_PAGE_USD = 0.002;
+// SERP Google Maps, queued at high priority. measured: task_post bills $0.0012
+// per task at depth 20.
+const LOCAL_SERP_TASK_USD = 0.0012;
 
 type ProviderUsdEstimator<I> = (input: I) => number;
 
@@ -253,6 +274,10 @@ export const dataforseoPricing = {
         ? LOCAL_SERP_PAGE_USD
         : Math.ceil(input.depth / 10) * LOCAL_SERP_PAGE_USD,
     ),
+    localTaskPost: priced(
+      postLocalSerpTasks,
+      (input) => input.locationCoordinates.length * LOCAL_SERP_TASK_USD,
+    ),
   },
   labs: {
     keywordOverview: priced(fetchKeywordOverview, (input) =>
@@ -281,11 +306,21 @@ export const dataforseoPricing = {
       fetchLlmCrossAggregatedMetrics,
       () => LLM_MENTIONS_ONE_ROW_USD,
     ),
-    llmResponse: priced(fetchLlmResponse, (input) => {
-      const price = LLM_RESPONSE_USD[input.modelSlug];
-      return (input.webSearch ?? LLM_RESPONSE_WEB_SEARCH_DEFAULT)
-        ? price.webSearch
-        : price.noSearch;
-    }),
+    // One standard-queue answer per task, on every tracked engine.
+    trackingTaskPost: priced(
+      postAiTrackingTasks,
+      (input) => input.tasks.length * AI_RECORD_COST_USD,
+    ),
+    // One live answer, on every tracked engine.
+    trackingLive: priced(
+      fetchAiTrackingLiveAnswer,
+      () => AI_LIVE_RECORD_COST_USD,
+    ),
+    llmResponse: priced(fetchLlmResponse, (input) =>
+      llmResponseUsd(
+        input.modelSlug,
+        input.webSearch ?? LLM_RESPONSE_WEB_SEARCH_DEFAULT,
+      ),
+    ),
   },
 } as const;

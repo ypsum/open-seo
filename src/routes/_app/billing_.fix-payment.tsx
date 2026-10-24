@@ -1,7 +1,5 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { useCustomer } from "autumn-js/react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useSession } from "@/lib/auth-client";
 import { isHostedClientAuthMode } from "@/lib/auth-mode";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -10,22 +8,31 @@ import {
 } from "@/client/features/team/organizationQueries";
 import { getStandardErrorMessage } from "@/client/lib/error-messages";
 import { captureClientError, captureClientEvent } from "@/client/lib/posthog";
-import { getBillingRouteState } from "@/client/features/billing/route-state";
+import {
+  billingAccountQueryOptions,
+  prefetchBillingAccount,
+} from "@/client/features/billing/billingAccountQuery";
+import { createBillingPortalSession } from "@/serverFunctions/billing";
 import { BILLING_ROUTE } from "@/shared/billing";
 import { QueryError } from "@/client/components/QueryState";
+import { SkeletonPage } from "@/client/components/SkeletonPresets";
 import { Spinner } from "@/client/components/Spinner";
 import { Button } from "@/client/components/ui/button";
 
-const SUPPORT_EMAIL = "ben@openseo.so";
+const SUPPORT_EMAIL = "support@openseo.so";
 
 // How long the post-portal "checking" screen polls Autumn before telling the
-// user the retry is still pending.
+// user the retry is still pending, and how often it polls.
 const CHECKING_TIMEOUT_MS = 30_000;
+const CHECKING_POLL_MS = 1000;
 
 // Linked from the payment-failed email. Deliberately narrower than /billing:
 // one problem, one fix. The Stripe portal both saves the new card as the
 // default and lets the customer pay the open invoice, so it is the only action.
 export const Route = createFileRoute("/_app/billing_/fix-payment")({
+  // The loader fills the module-scoped query client, so keep it out of server
+  // requests: one worker isolate must not cache another account's billing.
+  ssr: false,
   validateSearch: (search: Record<string, unknown>): { returned?: true } => ({
     returned:
       search.returned === true || search.returned === "true" ? true : undefined,
@@ -35,47 +42,43 @@ export const Route = createFileRoute("/_app/billing_/fix-payment")({
       throw notFound();
     }
   },
+  // Most visits are full loads from the payment-failed email: start the
+  // billing read alongside the session check, not after it.
+  loader: () => prefetchBillingAccount(),
   component: FixPaymentPage,
 });
 
 function FixPaymentPage() {
   const { returned } = Route.useSearch();
-  const { data: session, isPending: isSessionPending } = useSession();
   const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkingTimedOut, setCheckingTimedOut] = useState(false);
   const viewCaptured = useRef(false);
 
-  const customerQuery = useCustomer({
-    queryOptions: { enabled: Boolean(session?.user?.id) },
+  const accountQuery = useQuery({
+    ...billingAccountQueryOptions(),
+    // Stripe retries the invoice with the new card and Autumn relays the
+    // result a few seconds later; poll until the subscription is no longer
+    // past due. An interval never cancels a read in flight, unlike refetch().
+    refetchInterval: (query) =>
+      returned && !checkingTimedOut && query.state.data?.isPastDue
+        ? CHECKING_POLL_MS
+        : false,
   });
+  const account = accountQuery.data;
+
   const canManageBilling = useCanManageBilling();
   // The hook above reports true while the role loads (a UI choice); the
   // telemetry waits for the real role.
   const roleResolved =
     useQuery(organizationContextQueryOptions()).data !== undefined;
 
-  const routeState = getBillingRouteState({
-    hasSession: Boolean(session?.user?.id),
-    isSessionPending,
-    isCustomerLoading: customerQuery.isLoading,
-    isCustomerError: customerQuery.isError,
-    hasCustomerData: customerQuery.data != null,
-  });
-  const isPastDue =
-    customerQuery.data?.subscriptions?.some((s) => s.pastDue) ?? false;
-  const isChecking =
-    Boolean(returned) &&
-    routeState === "ready" &&
-    isPastDue &&
-    !checkingTimedOut;
+  const isLoaded = account !== undefined;
+  const isPastDue = account?.isPastDue ?? false;
+  const isChecking = Boolean(returned) && isPastDue && !checkingTimedOut;
 
-  // Stripe retries the invoice with the new card and Autumn relays the result
-  // a few seconds later; poll until the subscription is no longer past due.
-  const { refetch: refetchCustomer } = customerQuery;
   useEffect(() => {
     if (!isChecking) return;
-    const interval = setInterval(() => void refetchCustomer(), 2000);
     const timeout = setTimeout(() => {
       setCheckingTimedOut(true);
       // The user did the right thing and we could not confirm it worked.
@@ -85,37 +88,36 @@ function FixPaymentPage() {
         { context: "fix_payment_check_timeout" },
       );
     }, CHECKING_TIMEOUT_MS);
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
-  }, [isChecking, refetchCustomer]);
+    return () => clearTimeout(timeout);
+  }, [isChecking]);
 
   // Funnel: viewed -> portal_opened -> returned -> payment_fixed. Each fires
   // once per page load; `returned` is a full navigation back from Stripe.
   useEffect(() => {
-    if (routeState !== "ready" || !roleResolved || viewCaptured.current) return;
+    if (!isLoaded || !roleResolved || viewCaptured.current) return;
     viewCaptured.current = true;
     captureClientEvent(
       returned ? "billing:fix_payment_returned" : "billing:fix_payment_viewed",
       { past_due: isPastDue, can_manage_billing: canManageBilling },
     );
-  }, [routeState, roleResolved, returned, isPastDue, canManageBilling]);
+  }, [isLoaded, roleResolved, returned, isPastDue, canManageBilling]);
 
   useEffect(() => {
-    if (returned && routeState === "ready" && !isPastDue) {
+    if (returned && isLoaded && !isPastDue) {
       captureClientEvent("billing:payment_fixed");
     }
-  }, [returned, routeState, isPastDue]);
+  }, [returned, isLoaded, isPastDue]);
 
   async function openPortal() {
     setError(null);
     setIsOpeningPortal(true);
     captureClientEvent("billing:fix_payment_portal_opened");
     try {
-      const returnUrl = new URL(window.location.href);
-      returnUrl.searchParams.set("returned", "true");
-      await customerQuery.openCustomerPortal({ returnUrl: returnUrl.href });
+      window.location.assign(
+        await createBillingPortalSession({
+          data: { returnTo: "/billing/fix-payment?returned=true" },
+        }),
+      );
     } catch (err) {
       captureClientError(err, { context: "fix_payment_open_portal" });
       setError(
@@ -128,18 +130,19 @@ function FixPaymentPage() {
     }
   }
 
-  if (routeState === "loading") {
-    return null;
+  if (accountQuery.isPending) {
+    return <SkeletonPage />;
   }
 
-  if (routeState === "error") {
+  // A failed refetch keeps the loaded page; only a failed first read stops.
+  if (!isLoaded) {
     return (
       <Page title="Billing unavailable">
         <QueryError
-          error={customerQuery.error}
+          cause={accountQuery.error}
           fallback="We couldn't load your billing details right now. Please try again."
-          onRetry={() => void customerQuery.refetch()}
-          isRetrying={customerQuery.isFetching}
+          onRetry={() => void accountQuery.refetch()}
+          isRetrying={accountQuery.isFetching}
         />
       </Page>
     );

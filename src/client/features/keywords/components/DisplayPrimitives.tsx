@@ -25,11 +25,13 @@ export type SortField =
   | "keywordDifficulty";
 export type SortDir = "asc" | "desc";
 
-const trendChartConfig = {
-  searchVolume: { label: "Search volume", color: "var(--color-primary)" },
-} satisfies ChartConfig;
-
-export function AreaTrendChart({ trend }: { trend: MonthlySearch[] }) {
+export function AreaTrendChart({
+  trend,
+  label = "Search volume",
+}: {
+  trend: MonthlySearch[];
+  label?: string;
+}) {
   const last12 = lastTwelveMonths(trend);
   if (last12.length === 0) return null;
 
@@ -40,9 +42,13 @@ export function AreaTrendChart({ trend }: { trend: MonthlySearch[] }) {
 
   return (
     <ChartContainer
-      config={trendChartConfig}
+      config={
+        {
+          searchVolume: { label, color: "var(--color-primary)" },
+        } satisfies ChartConfig
+      }
       className="h-[210px]"
-      aria-label="Search trend chart"
+      aria-label={`${label} trend chart`}
     >
       <AreaChart
         data={data}

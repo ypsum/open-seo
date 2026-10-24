@@ -1,11 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getBillingRouteState, getSubscribeRouteState } from "./route-state";
+import { getSubscribeRouteState } from "./route-state";
 
 describe("getSubscribeRouteState", () => {
   // hasManagedAccess is true for essentially every hosted customer: the free
   // plan is the Autumn default and grants managed_service_access too.
   const base = {
-    hasSession: true,
     isCustomerLoading: false,
     isCustomerError: false,
     hasCustomerData: true,
@@ -77,23 +76,5 @@ describe("getSubscribeRouteState", () => {
         isCustomerError: true,
       }),
     ).toBe("redirectToApp");
-  });
-});
-
-describe("getBillingRouteState", () => {
-  it("keeps the loaded page when a customer refetch fails", () => {
-    const failed = {
-      hasSession: true,
-      isSessionPending: false,
-      isCustomerLoading: false,
-      isCustomerError: true,
-    };
-
-    expect(getBillingRouteState({ ...failed, hasCustomerData: true })).toBe(
-      "ready",
-    );
-    expect(getBillingRouteState({ ...failed, hasCustomerData: false })).toBe(
-      "error",
-    );
   });
 });
