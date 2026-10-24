@@ -36,6 +36,7 @@ import { getDomainKeywordSuggestionsTool } from "@/server/mcp/tools/get-domain-k
 import { getDomainOverviewTool } from "@/server/mcp/tools/get-domain-overview";
 import { getVisibilityHistoryTool } from "@/server/mcp/tools/get-visibility-history";
 import { updateRankTrackerScheduleTool } from "@/server/mcp/tools/update-rank-tracker-schedule";
+import { getKeywordOpportunitiesTool } from "@/server/mcp/tools/get-keyword-opportunities";
 import { getRankCompetitorsTool } from "@/server/mcp/tools/get-rank-competitors";
 import { addRankTrackingKeywordsTool } from "@/server/mcp/tools/add-rank-tracking-keywords";
 import { createRankTrackerTool } from "@/server/mcp/tools/create-rank-tracker";
@@ -323,6 +324,7 @@ export function createOpenSeoMcpServer(
   register(pinRankTrackingKeywordsTool);
   register(estimateRankTrackerCostTool);
   register(updateRankTrackerScheduleTool);
+  register(getKeywordOpportunitiesTool);
   register(getRankCompetitorsTool);
   register(runRankTrackerTool);
   register(getRankedKeywordsTool);
