@@ -15,6 +15,7 @@ import {
 } from "@/server/lib/dataforseo/backlinks";
 import {
   fetchDomainRankOverview,
+  fetchHistoricalRankOverview,
   fetchKeywordIdeas,
   fetchKeywordOverview,
   fetchKeywordSuggestions,
@@ -225,6 +226,10 @@ export const dataforseoPricing = {
   },
   domain: {
     rankOverview: priced(fetchDomainRankOverview, () => labsUsd(1)),
+    // Fork (ypsum): one row per month of history; Labs keeps a few years.
+    historicalRankOverview: priced(fetchHistoricalRankOverview, () =>
+      labsUsd(60),
+    ),
     rankedKeywords: priced(fetchRankedKeywords, (input) =>
       labsUsd(input.limit),
     ),
