@@ -1,4 +1,5 @@
 import { waitUntil } from "cloudflare:workers";
+import { fetchListingSerp } from "@/server/lib/dataforseo/listingSerp";
 import {
   type CreditFeature,
   mapDataforseoPathToCreditFeature,
@@ -213,6 +214,11 @@ export function createDataforseoClient(customer: BillingCustomerContext) {
     },
     serp: {
       live: meter(customer, fetchLiveSerp, dataforseoPricing.serp.live),
+      listing: meter(
+        customer,
+        fetchListingSerp,
+        dataforseoPricing.serp.listing,
+      ),
       // A rank check batch shares one credit hold and one settle across its
       // live calls (see meterDataforseoCalls). Resolves per call, in order.
       rankCheckBatch: (inputs: Parameters<typeof fetchRankCheckSerp>[0][]) =>

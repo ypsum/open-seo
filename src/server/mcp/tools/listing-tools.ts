@@ -156,6 +156,10 @@ function renderScan(scan: Awaited<ReturnType<typeof scanListings>>) {
     ...(scan.otherSites.length > 0
       ? [`Other websites with the business name: ${scan.otherSites.join(", ")}`]
       : []),
+    ...scan.searchNotes.map(
+      (note) =>
+        `Note: search ${note.keyword} ${note.status === "partial" ? "returned only part of its pages" : `failed (${note.message ?? "unknown error"})`}; portals it would have found may show as not found.`,
+    ),
     ...(scan.unlistedHosts.length > 0
       ? [
           `Also listed on (not on the portal list): ${scan.unlistedHosts.join(", ")}`,
