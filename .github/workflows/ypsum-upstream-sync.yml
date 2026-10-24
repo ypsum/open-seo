@@ -1,0 +1,82 @@
+# Fork (ypsum): weekly merge of every-app/open-seo main into a sync branch,
+# checked like CI, opened as a PR against our main. Merge stays manual (Canay
+# decides in the SEO-Runde); merging to main publishes ghcr.io/ypsum/open-seo.
+# PRs opened with GITHUB_TOKEN do not trigger ci.yml, so the checks run here.
+name: ypsum upstream sync
+
+on:
+  schedule:
+    - cron: "0 3 * * 1" # Monday 03:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: ypsum-upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'ypsum/open-seo'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge upstream main
+        id: merge
+        run: |
+          git config user.name "ypsum-bot"
+          git config user.email "bot@ypsum.de"
+          git remote add upstream https://github.com/every-app/open-seo.git
+          git fetch upstream main
+          behind=$(git rev-list --count HEAD..upstream/main)
+          echo "behind=$behind" >> "$GITHUB_OUTPUT"
+          if [ "$behind" = "0" ]; then
+            echo "Nothing new upstream." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          branch="ypsum/upstream-sync-$(date -u +%Y-%m-%d)"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          git checkout -b "$branch"
+          if ! git merge --no-edit upstream/main; then
+            {
+              echo "Merge conflict with upstream ($behind commits behind):"
+              git diff --name-only --diff-filter=U
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Setup pnpm
+        if: steps.merge.outputs.behind != '0'
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        if: steps.merge.outputs.behind != '0'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Check
+        if: steps.merge.outputs.behind != '0'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run ci:check
+          pnpm run test:ci
+          pnpm vite build
+
+      - name: Open PR
+        if: steps.merge.outputs.behind != '0'
+        run: |
+          git push origin "${{ steps.merge.outputs.branch }}"
+          gh pr create --base main --head "${{ steps.merge.outputs.branch }}" \
+            --title "Upstream-Abgleich $(date -u +%d.%m.%Y)" \
+            --body "Automatischer Wochen-Abgleich: ${{ steps.merge.outputs.behind }} Commits von every-app/open-seo main eingemergt. ci:check, Tests und Worker-Build in diesem Lauf grün. Mergen nach Go in der SEO-Runde, danach baut \"Publish ypsum Docker image\" das Image."
