@@ -14,6 +14,7 @@ import { AppError } from "@/server/lib/errors";
 import type { RankTrackingConfig } from "@/types/schemas/rank-tracking";
 import { KEYWORDS_PER_BATCH } from "@/shared/rank-tracking";
 import { pgStep } from "@/server/workflows/pgStep";
+import { saveCompetitorPositions } from "@/server/features/rank-tracking/services/rankCompetitorStore";
 
 const SINGLE_ATTEMPT_STEP_CONFIG = {
   retries: { limit: 0, delay: "1 second" as const },
@@ -51,6 +52,9 @@ export interface CheckContext {
   languageCode: string;
   locationName?: string;
   runId: string;
+  /** Fork (ypsum): tracker id and project-context competitors for this run. */
+  configId: string;
+  competitorDomains: string[];
 }
 
 /** Expand keywords into one task input per keyword/device pair. */
@@ -96,6 +100,7 @@ async function checkBatchLive(
         locationName: ctx.locationName,
         device: task.device,
         targetDomain: ctx.domain,
+        competitorDomains: ctx.competitorDomains,
         depth: ctx.serpDepth,
       })),
     );
@@ -132,6 +137,7 @@ async function checkBatchLive(
     await RankTrackingRepository.insertSnapshots(
       mapResultsToSnapshotRows(ctx.runId, results),
     );
+    await saveCompetitorPositions(ctx, results);
   }
   return results.length;
 }
@@ -229,6 +235,7 @@ async function fetchQueuedRound(
           keywordId: task.keywordId,
           keyword: task.keyword,
           targetDomain: ctx.domain,
+          competitorDomains: ctx.competitorDomains,
         }),
       ),
     );
@@ -284,6 +291,7 @@ export async function runQueuedTasks(
             locationName: ctx.locationName,
             depth: ctx.serpDepth,
             targetDomain: ctx.domain,
+            competitorDomains: ctx.competitorDomains,
           }),
         )),
       );
@@ -350,6 +358,7 @@ export async function runQueuedCheck(
       await RankTrackingRepository.insertSnapshots(
         mapResultsToSnapshotRows(ctx.runId, results),
       );
+      await saveCompetitorPositions(ctx, results);
       // Progress for the UI; finalize recounts from the DB anyway.
       const snapshots = await RankTrackingRepository.getSnapshotsForRun(
         ctx.runId,

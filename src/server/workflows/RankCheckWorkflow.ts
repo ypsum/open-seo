@@ -13,6 +13,7 @@ import {
   runQueuedCheck,
 } from "@/server/workflows/rankCheckPaths";
 import { retryRankChecks } from "@/server/workflows/rankCheckRetries";
+import { listCompetitorDomains } from "@/server/features/rank-tracking/services/rankCompetitorStore";
 import { pgStep } from "@/server/workflows/pgStep";
 import { createDataforseoClient } from "@/server/lib/dataforseo";
 import { captureServerEvent } from "@/server/lib/posthog";
@@ -348,6 +349,14 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
 
       const keywords = prepareResult.keywords;
       const client = createDataforseoClient(billingCustomer);
+      // Fork (ypsum): competitors from the project context are read off the
+      // same results pages.
+      const competitorDomains = await pgStep(
+        step,
+        "load-competitors",
+        { retries: { limit: 2, delay: "1 second" } },
+        () => listCompetitorDomains(projectId, domain),
+      );
 
       console.log(`[rank-check] ${runId} loaded ${keywords.length} keywords`);
 
@@ -364,6 +373,8 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
           languageCode,
           locationName,
           runId,
+          configId,
+          competitorDomains,
         };
         // Scheduled checks use DataForSEO's task queue (~30% of live cost);
         // manual checks stay on the live endpoint for instant results.

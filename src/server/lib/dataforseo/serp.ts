@@ -39,7 +39,14 @@ export function clampSerpDepth(depth: number): number {
  * find_targets_in, a sitelink or PAA mention could stop the crawl before the
  * domain's organic listing and record a false "not ranking".
  */
-function stopCrawlOnTarget(targetDomain: string) {
+function stopCrawlOnTarget(
+  targetDomain: string,
+  competitorDomains: readonly string[] = [],
+) {
+  // Fork (ypsum): competitor positions come from the same results page, so a
+  // check with competitors crawls the full depth (the estimate already prices
+  // full depth).
+  if (competitorDomains.length > 0) return {};
   return {
     stop_crawl_on_match: [
       { match_value: targetDomain, match_type: "with_subdomains" },
@@ -132,28 +139,54 @@ export interface RankCheckResult {
   position: number | null;
   url: string | null;
   serpFeatures: string[];
+  /** Fork (ypsum): best organic position of each competitor on the same page. */
+  competitors?: {
+    domain: string;
+    position: number | null;
+    url: string | null;
+  }[];
 }
 
-function buildRankCheckResult(
-  input: { keywordId: string; keyword: string; targetDomain: string },
-  items: SerpLiveItem[],
-): RankCheckResult {
-  const target = input.targetDomain.toLowerCase();
-  const organicMatch = items.find((item) => {
+function findOrganicMatch(items: SerpLiveItem[], targetDomain: string) {
+  const target = targetDomain.toLowerCase();
+  return items.find((item) => {
     if (item.type !== "organic" || item.domain == null) return false;
     const domain = item.domain.toLowerCase();
     return domain === target || domain.endsWith(`.${target}`);
   });
+}
+
+function organicPosition(item: SerpLiveItem | undefined) {
+  return item ? (item.rank_group ?? item.rank_absolute ?? null) : null;
+}
+
+function buildRankCheckResult(
+  input: {
+    keywordId: string;
+    keyword: string;
+    targetDomain: string;
+    competitorDomains?: readonly string[];
+  },
+  items: SerpLiveItem[],
+): RankCheckResult {
+  const organicMatch = findOrganicMatch(items, input.targetDomain);
+  const competitors = (input.competitorDomains ?? []).map((domain) => {
+    const match = findOrganicMatch(items, domain);
+    return {
+      domain,
+      position: organicPosition(match),
+      url: match?.url ?? null,
+    };
+  });
 
   return {
+    ...(competitors.length > 0 ? { competitors } : {}),
     keywordId: input.keywordId,
     keyword: input.keyword,
     // rank_group = position among organic results only (what users count as
     // "my ranking"). rank_absolute would also count SERP features (local
     // pack, PAA, AI overviews) and reads as worse than what users see.
-    position: organicMatch
-      ? (organicMatch.rank_group ?? organicMatch.rank_absolute ?? null)
-      : null,
+    position: organicPosition(organicMatch),
     url: organicMatch?.url ?? null,
     serpFeatures: [...new Set(items.map((item) => item.type).filter(Boolean))],
   };
@@ -167,6 +200,7 @@ export async function fetchRankCheckSerp(input: {
   locationName?: string;
   device: "desktop" | "mobile";
   targetDomain: string;
+  competitorDomains?: readonly string[];
   depth: number;
 }): Promise<DataforseoApiResponse<RankCheckResult>> {
   const depth = clampSerpDepth(input.depth);
@@ -183,7 +217,7 @@ export async function fetchRankCheckSerp(input: {
         device: input.device,
         os: input.device === "desktop" ? "windows" : "android",
         depth,
-        ...stopCrawlOnTarget(input.targetDomain),
+        ...stopCrawlOnTarget(input.targetDomain, input.competitorDomains),
       },
     ],
   );
@@ -227,6 +261,7 @@ export async function postRankCheckTasks(input: {
   locationName?: string;
   depth: number;
   targetDomain: string;
+  competitorDomains?: readonly string[];
 }): Promise<DataforseoApiResponse<PostedRankCheckTask[]>> {
   if (input.tasks.length === 0 || input.tasks.length > MAX_TASKS_PER_POST) {
     throw new AppError(
@@ -253,7 +288,7 @@ export async function postRankCheckTasks(input: {
       // task_get later reports the reduced actual cost when the crawl
       // stopped early. We meter customers on the post-time amount —
       // collection-time metering is a possible future optimization.
-      ...stopCrawlOnTarget(input.targetDomain),
+      ...stopCrawlOnTarget(input.targetDomain, input.competitorDomains),
       // Echoed back on the response entry and task_get; used to map a
       // DataForSEO task id back to our keyword without relying on order.
       tag: `${task.keywordId}:${task.device}`,
@@ -313,6 +348,7 @@ export async function fetchRankCheckTaskResult(input: {
   keywordId: string;
   keyword: string;
   targetDomain: string;
+  competitorDomains?: readonly string[];
 }): Promise<RankCheckTaskOutcome> {
   const response = await dataforseoGet(
     `/v3/serp/google/organic/task_get/advanced/${encodeURIComponent(input.taskId)}`,
