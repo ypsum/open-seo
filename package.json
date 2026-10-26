@@ -2,7 +2,7 @@
   "name": "open-seo",
   "private": true,
   "sideEffects": false,
-  "version": "0.1.14",
+  "version": "0.1.17",
   "type": "module",
   "packageManager": "pnpm@10.30.1",
   "scripts": {
@@ -12,6 +12,7 @@
     "dev:agents": "mkdir -p .logs && portless run vite dev 2>&1 | tee .logs/dev-server.log",
     "dev:agents:force": "mkdir -p .logs && portless --force run vite dev 2>&1 | tee .logs/dev-server.log",
     "build": "pnpm build:report-widgets && vite build && tsc --noEmit",
+    "build:standalone": "pnpm build:report-widgets && vite build --mode standalone && node scripts/celld/package.mjs",
     "build:report-widgets": "tsc --noEmit -p tsconfig.report-widgets.json && vite build -c vite.report-widgets.config.ts",
     "lint": "oxlint . --type-aware",
     "lint:fix": "oxlint . --type-aware --fix",
@@ -45,8 +46,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:ci": "vitest run --reporter=dot",
+    "test:standalone:gateway": "node --test scripts/celld/runtime/crawl-gateway.test.mjs",
     "test:e2e": "playwright test -c tests/playwright.config.ts",
     "test:e2e:free-tools": "playwright test -c tests/playwright.free-tools.config.ts",
+    "test:e2e:mcp-isolation": "playwright test -c tests/playwright.mcp-isolation.config.ts",
     "test:e2e:domain": "playwright test -c tests/playwright.config.ts tests/domain-overview-filters.spec.ts",
     "test:e2e:domain:perf": "playwright test -c tests/playwright.config.ts tests/domain-overview-filters.perf.spec.ts",
     "test:e2e:keywords": "playwright test -c tests/playwright.config.ts tests/keyword-research-navigation.spec.ts",
@@ -58,6 +61,8 @@
     "repair:rank-locations": "tsx scripts/repair-rank-tracking-locations.ts",
     "seed:rank-tracking": "tsx scripts/seed-rank-tracking.ts",
     "seed:projects": "tsx scripts/seed-projects.ts",
+    "standalone:admin": "docker compose -f deploy/standalone/compose.yaml exec -T runtime node /opt/standalone/admin.mjs",
+    "selfhost:admin": "node --env-file=.env.selfhost scripts/celld/runtime/admin.mjs",
     "ci:check": "prettier --check . && knip && tsc --noEmit && tsc --noEmit -p tests/badseo/tsconfig.json && tsc --noEmit -p tsconfig.report-widgets.json && oxlint . --type-aware && pnpm sync-plugin-skills && test -z \"$(git status --porcelain -- plugins/openseo/skills)\""
   },
   "cloudflare": {

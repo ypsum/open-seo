@@ -58,6 +58,34 @@ function checkAuthMode(env: EnvRecord, items: PreflightItem[]): void {
     return;
   }
 
+  if (mode === "password") {
+    const url = get(env, "BETTER_AUTH_URL");
+    const secret = get(env, "BETTER_AUTH_SECRET");
+    const missing = [
+      url ? null : "BETTER_AUTH_URL",
+      secret && secret.length >= MIN_BETTER_AUTH_SECRET_LENGTH
+        ? null
+        : `BETTER_AUTH_SECRET (at least ${MIN_BETTER_AUTH_SECRET_LENGTH} characters)`,
+    ].filter(Boolean);
+    items.push(
+      missing.length
+        ? {
+            key: "auth",
+            name: "AUTH_MODE",
+            level: "fail",
+            message: `password mode requires ${missing.join(" and ")}.`,
+          }
+        : {
+            key: "auth",
+            name: "AUTH_MODE",
+            level: "ok",
+            message:
+              "password — email and password accounts; the first visitor creates the admin account and invitations add the rest",
+          },
+    );
+    return;
+  }
+
   if (mode === "hosted") {
     const missing = [
       "BETTER_AUTH_URL",

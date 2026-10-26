@@ -5,6 +5,7 @@
 // gracefully (less text); a Browser Rendering upgrade can slot in behind this
 // same interface later.
 
+import { publicFetch } from "@/server/lib/public-fetch";
 import { normalizeAndValidateStartUrl } from "@/server/lib/audit/url-policy";
 import { RenderedPageService } from "@/server/lib/audit/rendered-page";
 import { getOptionalEnvValue } from "@/server/lib/runtime-env";
@@ -67,7 +68,7 @@ async function fetchText(
   let current = url;
   try {
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-      const response = await fetch(current, {
+      const response = await publicFetch(current, {
         headers: { "user-agent": USER_AGENT, accept: "text/html,*/*" },
         // Manual redirects so we can re-validate each hop against the SSRF guard;
         // redirect:"follow" would let a 30x to an internal host bypass it.

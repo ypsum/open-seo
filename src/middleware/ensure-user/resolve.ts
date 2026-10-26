@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { getAuthMode, isHostedAuthMode } from "@/lib/auth-mode";
+import { getAuthMode, usesBetterAuth } from "@/lib/auth-mode";
 import { resolveCloudflareAccessContext } from "./cloudflareAccess";
 import { resolveLocalNoAuthContext } from "./delegated";
 import { resolveHostedContext } from "./hosted";
@@ -15,7 +15,7 @@ export async function resolveUserContextFromHeaders(
   if (authMode === "local_noauth") {
     return resolveLocalNoAuthContext();
   }
-  if (isHostedAuthMode(authMode)) {
+  if (usesBetterAuth(authMode)) {
     return resolveHostedContext(headers);
   }
   return resolveCloudflareAccessContext(headers);

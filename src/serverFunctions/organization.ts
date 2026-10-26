@@ -3,6 +3,7 @@ import { APIError } from "better-auth/api";
 import { getRequest } from "@tanstack/react-start/server";
 import { z } from "zod";
 import { getAuth, getHostedBaseUrl } from "@/lib/auth";
+import { isHostedAuthMode } from "@/lib/auth-mode";
 import { hasOrgPermission } from "@/lib/org-permissions";
 import { consumeInvitationSendBudget } from "@/server/auth/invitation-send-limit";
 import { requireOrgPermission } from "@/server/auth/org-gate";
@@ -10,6 +11,7 @@ import { transferOrganizationOwnership } from "@/server/auth/ownership-transfer"
 import { AuthRepository } from "@/server/auth/repositories/AuthRepository";
 import { sendHostedInvitationEmail } from "@/server/email/loops";
 import { AppError } from "@/server/lib/errors";
+import { env } from "cloudflare:workers";
 import { requireAuthenticatedContext } from "@/serverFunctions/middleware";
 
 // The client's source of truth for "who am I in this organization": the active
@@ -149,11 +151,17 @@ export const sendTeamInvitation = createServerFn({ method: "POST" })
       memberships.find(
         (membership) => membership.organizationId === context.organizationId,
       )?.organizationName ?? "Organization";
+    const inviteUrl = `${getHostedBaseUrl()}/accept-invitation/${invitation.id}`;
+
+    // Password mode has no email transport: the inviter passes the link on.
+    if (!isHostedAuthMode(env.AUTH_MODE)) {
+      return { invitationId: invitation.id, inviteUrl };
+    }
 
     try {
       await sendHostedInvitationEmail({
         email: data.email,
-        inviteUrl: `${getHostedBaseUrl()}/accept-invitation/${invitation.id}`,
+        inviteUrl,
         organizationName,
         inviterName: inviter?.name?.trim() || context.userEmail,
         inviterEmail: context.userEmail,
@@ -165,7 +173,7 @@ export const sendTeamInvitation = createServerFn({ method: "POST" })
       throw new AppError("UPSTREAM_UNAVAILABLE");
     }
 
-    return { invitationId: invitation.id };
+    return { invitationId: invitation.id, inviteUrl: undefined };
   });
 
 const transferOwnershipSchema = z.object({ memberId: z.string().min(1) });

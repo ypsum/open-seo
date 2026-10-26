@@ -17,7 +17,7 @@ import {
 } from "@/client/components/ui/card";
 import { PageHeader } from "@/client/components/PageHeader";
 import { ArrowUpRight, ShieldAlert } from "lucide-react";
-import { getAuthMode } from "@/lib/auth-mode";
+import { getClientAuthMode } from "@/lib/auth-mode";
 import { captureClientEvent } from "@/client/lib/posthog";
 import {
   agentUpdatePrompt,
@@ -185,7 +185,7 @@ function AiPage() {
               </Card>
             </div>
 
-            {getAuthMode(import.meta.env.AUTH_MODE) === "cloudflare_access" ? (
+            {getClientAuthMode() === "cloudflare_access" ? (
               <Alert variant="warning" className="mt-8">
                 <ShieldAlert />
                 <AlertDescription>
