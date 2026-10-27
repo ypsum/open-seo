@@ -115,6 +115,13 @@ export const LISTING_PORTALS: ListingPortal[] = [
     "oeffnungszeiten.com",
   ),
   portal("infobel", "Infobel", "branchenbuch", "infobel.com"),
+  portal("wheree", "Wheree", "branchenbuch", "wheree.com"),
+  portal(
+    "wo-kindergeburtstag-feiern",
+    "Wo Kindergeburtstag feiern",
+    "branchenbuch",
+    "wo-kindergeburtstag-feiern.de",
+  ),
   portal(
     "werkenntdenbesten",
     "Wer kennt den Besten",
