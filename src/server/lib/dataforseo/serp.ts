@@ -31,29 +31,12 @@ export function clampSerpDepth(depth: number): number {
   return Math.min(100, Math.max(10, depth));
 }
 
-/**
- * Stop crawling SERP pages once the target domain is found — DataForSEO only
- * bills the pages crawled, so a page-1 ranking at depth 20 costs one page
- * instead of two. Matching is restricted to organic results and uses
- * with_subdomains, mirroring buildRankCheckResult exactly: without
- * find_targets_in, a sitelink or PAA mention could stop the crawl before the
- * domain's organic listing and record a false "not ranking".
- */
-function stopCrawlOnTarget(
-  targetDomain: string,
-  competitorDomains: readonly string[] = [],
-) {
-  // Fork (ypsum): competitor positions come from the same results page, so a
-  // check with competitors crawls the full depth (the estimate already prices
-  // full depth).
-  if (competitorDomains.length > 0) return {};
-  return {
-    stop_crawl_on_match: [
-      { match_value: targetDomain, match_type: "with_subdomains" },
-    ],
-    find_targets_in: ["organic"],
-  };
-}
+// Fork (ypsum): rank checks always crawl the full depth. DataForSEO's
+// stop_crawl_on_match compares its own domain field, which reads "google.com"
+// when Google wraps organic links in google.com/goto redirects. Those checks
+// returned a deep fallback row instead of the real page-1 listing (GetSpeed
+// "nürburgring renntaxi": tracker 33, full crawl 2, 06.11.2026). The cost
+// estimate already prices full depth.
 
 // Kept as a hand-written schema: the SDK's BaseSerpApiElementItem type omits
 // etv / estimated_paid_traffic_cost / backlinks_info / rank_changes, which we
@@ -253,7 +236,6 @@ export async function fetchRankCheckSerp(input: {
         device: input.device,
         os: input.device === "desktop" ? "windows" : "android",
         depth,
-        ...stopCrawlOnTarget(input.targetDomain, input.competitorDomains),
       },
     ],
   );
@@ -324,7 +306,6 @@ export async function postRankCheckTasks(input: {
       // task_get later reports the reduced actual cost when the crawl
       // stopped early. We meter customers on the post-time amount —
       // collection-time metering is a possible future optimization.
-      ...stopCrawlOnTarget(input.targetDomain, input.competitorDomains),
       // Echoed back on the response entry and task_get; used to map a
       // DataForSEO task id back to our keyword without relying on order.
       tag: `${task.keywordId}:${task.device}`,
