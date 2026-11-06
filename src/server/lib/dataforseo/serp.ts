@@ -147,17 +147,53 @@ export interface RankCheckResult {
   }[];
 }
 
-function findOrganicMatch(items: SerpLiveItem[], targetDomain: string) {
-  const target = targetDomain.toLowerCase();
-  return items.find((item) => {
-    if (item.type !== "organic" || item.domain == null) return false;
-    const domain = item.domain.toLowerCase();
-    return domain === target || domain.endsWith(`.${target}`);
-  });
+// Fork (ypsum): on some mobile SERPs Google wraps every organic link in a
+// google.com/goto redirect, so DataForSEO reports domain "google.com" and the
+// real site only shows up in the breadcrumb ("https://www.site.de › path").
+function isGoogleRedirect(item: SerpLiveItem) {
+  return /^https?:\/\/(www\.)?google\.[a-z.]+\/goto\b/i.test(item.url ?? "");
 }
 
-function organicPosition(item: SerpLiveItem | undefined) {
-  return item ? (item.rank_group ?? item.rank_absolute ?? null) : null;
+function breadcrumbOrigin(breadcrumb: string | null | undefined) {
+  const head = breadcrumb?.split("›")[0]?.trim();
+  if (!head) return null;
+  try {
+    const url = new URL(/^https?:\/\//i.test(head) ? head : `https://${head}`);
+    return url.hostname ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The organic result's real host and URL, unwrapping Google redirects. */
+export function organicTarget(item: SerpLiveItem) {
+  if (isGoogleRedirect(item)) {
+    const origin = breadcrumbOrigin(item.breadcrumb);
+    if (origin) {
+      return {
+        domain: origin.hostname.toLowerCase(),
+        url: `${origin.protocol}//${origin.hostname}/`,
+      };
+    }
+  }
+  return { domain: item.domain?.toLowerCase() ?? null, url: item.url ?? null };
+}
+
+function findOrganicMatch(items: SerpLiveItem[], targetDomain: string) {
+  const target = targetDomain.toLowerCase();
+  const item = items.find((candidate) => {
+    if (candidate.type !== "organic") return false;
+    const { domain } = organicTarget(candidate);
+    if (domain == null) return false;
+    return domain === target || domain.endsWith(`.${target}`);
+  });
+  return item ? { item, url: organicTarget(item).url } : undefined;
+}
+
+function organicPosition(match: { item: SerpLiveItem } | undefined) {
+  return match
+    ? (match.item.rank_group ?? match.item.rank_absolute ?? null)
+    : null;
 }
 
 function buildRankCheckResult(
