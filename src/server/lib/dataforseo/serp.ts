@@ -149,7 +149,7 @@ function breadcrumbOrigin(breadcrumb: string | null | undefined) {
 }
 
 /** The organic result's real host and URL, unwrapping Google redirects. */
-export function organicTarget(item: SerpLiveItem) {
+function organicTarget(item: SerpLiveItem) {
   if (isGoogleRedirect(item)) {
     const origin = breadcrumbOrigin(item.breadcrumb);
     if (origin) {
