@@ -16,6 +16,10 @@ import {
   failedResponseError,
 } from "@/server/lib/dataforseo/envelope";
 import { AppError } from "@/server/lib/errors";
+import {
+  readSerpExtras,
+  type RankSerpExtras,
+} from "@/server/lib/dataforseo/serpExtras";
 
 // Default depth for keyword SERP analysis. DataForSEO crawls (and bills) one
 // Google page of 10 results at a time, and the crawls are sequential, so depth
@@ -128,6 +132,8 @@ export interface RankCheckResult {
     position: number | null;
     url: string | null;
   }[];
+  /** Fork (ypsum): map pack position and AI Overview presence. */
+  serpExtras?: RankSerpExtras;
 }
 
 // Fork (ypsum): on some mobile SERPs Google wraps every organic link in a
@@ -185,6 +191,7 @@ function buildRankCheckResult(
     keyword: string;
     targetDomain: string;
     competitorDomains?: readonly string[];
+    targetNames?: readonly string[];
   },
   items: SerpLiveItem[],
 ): RankCheckResult {
@@ -208,6 +215,7 @@ function buildRankCheckResult(
     position: organicPosition(organicMatch),
     url: organicMatch?.url ?? null,
     serpFeatures: [...new Set(items.map((item) => item.type).filter(Boolean))],
+    serpExtras: readSerpExtras(items, input),
   };
 }
 
@@ -220,6 +228,7 @@ export async function fetchRankCheckSerp(input: {
   device: "desktop" | "mobile";
   targetDomain: string;
   competitorDomains?: readonly string[];
+  targetNames?: readonly string[];
   depth: number;
 }): Promise<DataforseoApiResponse<RankCheckResult>> {
   const depth = clampSerpDepth(input.depth);
@@ -366,6 +375,7 @@ export async function fetchRankCheckTaskResult(input: {
   keyword: string;
   targetDomain: string;
   competitorDomains?: readonly string[];
+  targetNames?: readonly string[];
 }): Promise<RankCheckTaskOutcome> {
   const response = await dataforseoGet(
     `/v3/serp/google/organic/task_get/advanced/${encodeURIComponent(input.taskId)}`,

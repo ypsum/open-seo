@@ -15,6 +15,8 @@ import {
 import { retryRankChecks } from "@/server/workflows/rankCheckRetries";
 import { listCompetitorDomains } from "@/server/features/rank-tracking/services/rankCompetitorStore";
 import { pgStep } from "@/server/workflows/pgStep";
+import { ProjectRepository } from "@/server/features/projects/repositories/ProjectRepository";
+import { businessNameCandidates } from "@/server/lib/dataforseo/serpExtras";
 import { createDataforseoClient } from "@/server/lib/dataforseo";
 import { captureServerEvent } from "@/server/lib/posthog";
 import { sendCreditsExhaustedEvent } from "@/server/email/onboarding-drip";
@@ -364,6 +366,18 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
         { retries: { limit: 2, delay: "1 second" } },
         () => listCompetitorDomains(projectId, domain),
       );
+      // Fork (ypsum): the map pack links to Google, not the site, so the
+      // business is recognised there by name.
+      const targetNames = await pgStep(
+        step,
+        "load-target-names",
+        { retries: { limit: 2, delay: "1 second" } },
+        async () =>
+          businessNameCandidates(
+            (await ProjectRepository.getProjectById(projectId))?.name,
+            domain,
+          ),
+      );
 
       console.log(`[rank-check] ${runId} loaded ${keywords.length} keywords`);
 
@@ -382,6 +396,7 @@ export class RankCheckWorkflow extends WorkflowEntrypoint<
           runId,
           configId,
           competitorDomains,
+          targetNames,
         };
         // Scheduled checks use DataForSEO's task queue (~30% of live cost);
         // manual checks stay on the live endpoint for instant results.

@@ -15,6 +15,7 @@ import type { RankTrackingConfig } from "@/types/schemas/rank-tracking";
 import { KEYWORDS_PER_BATCH } from "@/shared/rank-tracking";
 import { pgStep } from "@/server/workflows/pgStep";
 import { saveCompetitorPositions } from "@/server/features/rank-tracking/services/rankCompetitorStore";
+import { encodeSerpFeatures } from "@/server/lib/dataforseo/serpExtras";
 
 const SINGLE_ATTEMPT_STEP_CONFIG = {
   retries: { limit: 0, delay: "1 second" as const },
@@ -37,8 +38,7 @@ export function mapResultsToSnapshotRows(
     device: r.device,
     position: r.position,
     url: r.url,
-    serpFeatures:
-      r.serpFeatures.length > 0 ? JSON.stringify(r.serpFeatures) : null,
+    serpFeatures: encodeSerpFeatures(r.serpFeatures, r.serpExtras),
   }));
 }
 
@@ -55,6 +55,8 @@ export interface CheckContext {
   /** Fork (ypsum): tracker id and project-context competitors for this run. */
   configId: string;
   competitorDomains: string[];
+  /** Fork (ypsum): business names that identify the site in the map pack. */
+  targetNames?: string[];
 }
 
 /** Expand keywords into one task input per keyword/device pair. */
@@ -101,6 +103,7 @@ async function checkBatchLive(
         device: task.device,
         targetDomain: ctx.domain,
         competitorDomains: ctx.competitorDomains,
+        targetNames: ctx.targetNames,
         depth: ctx.serpDepth,
       })),
     );
@@ -236,6 +239,7 @@ async function fetchQueuedRound(
           keyword: task.keyword,
           targetDomain: ctx.domain,
           competitorDomains: ctx.competitorDomains,
+          targetNames: ctx.targetNames,
         }),
       ),
     );

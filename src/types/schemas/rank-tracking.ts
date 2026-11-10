@@ -33,6 +33,13 @@ export interface RankTrackingDeviceResult {
   previousPosition: number | null;
   rankingUrl: string | null;
   serpFeatures: string[];
+  /**
+   * Fork (ypsum): map pack position (null = not in it) and AI Overview
+   * presence (null = no loaded overview). Undefined for snapshots taken
+   * before these were read.
+   */
+  localPackPosition?: number | null;
+  aiOverview?: { mentioned: boolean; linked: boolean } | null;
 }
 
 export interface RankTrackingRow {
