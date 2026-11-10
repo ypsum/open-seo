@@ -40,6 +40,11 @@ vi.mock("@/server/features/rank-tracking/services/rankCompetitorStore", () => ({
   saveCompetitorPositions: vi.fn(),
   listCompetitorDomains: vi.fn(async () => []),
 }));
+vi.mock("@/server/features/projects/repositories/ProjectRepository", () => ({
+  ProjectRepository: {
+    getProjectById: vi.fn(async () => ({ name: "Example" })),
+  },
+}));
 vi.mock("@/server/workflows/pgStep", () => ({
   // Like the engine, run() gets a rebuilt Error, never the thrown object.
   pgStep: async (

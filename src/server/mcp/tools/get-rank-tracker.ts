@@ -17,6 +17,24 @@ import {
 import { projectIdSchema } from "@/server/mcp/schemas";
 import { googleSerpUrl } from "@/shared/google-serp-url";
 
+// Fork (ypsum): map pack and AI Overview, read off the same results page.
+function formatAiOverview(value: unknown): string | null {
+  if (value === undefined) return null;
+  if (value === null) return "none";
+  const linked = readPath(value, "linked") === true;
+  const mentioned = readPath(value, "mentioned") === true;
+  return linked ? "linked" : mentioned ? "mentioned" : "not mentioned";
+}
+
+function formatLocalPack(row: unknown, device: string): unknown {
+  const value = readPath(row, device, "localPackPosition");
+  if (value !== null) return value;
+  const features = readPath(row, device, "serpFeatures");
+  return Array.isArray(features) && features.includes("local_pack")
+    ? "not in pack"
+    : "no pack";
+}
+
 const RANK_RESULT_COLUMNS: McpTableColumn<unknown>[] = [
   // Put the removal id before provider text that may be truncated.
   {
@@ -33,6 +51,22 @@ const RANK_RESULT_COLUMNS: McpTableColumn<unknown>[] = [
   {
     header: "prev (mobile)",
     value: (row) => readPath(row, "mobile", "previousPosition"),
+  },
+  {
+    header: "map (desktop)",
+    value: (row) => formatLocalPack(row, "desktop"),
+  },
+  {
+    header: "map (mobile)",
+    value: (row) => formatLocalPack(row, "mobile"),
+  },
+  {
+    header: "ai overview (desktop)",
+    value: (row) => formatAiOverview(readPath(row, "desktop", "aiOverview")),
+  },
+  {
+    header: "ai overview (mobile)",
+    value: (row) => formatAiOverview(readPath(row, "mobile", "aiOverview")),
   },
   {
     header: "pinned",
@@ -131,7 +165,7 @@ export const getRankTrackerTool = {
   config: {
     title: "Get rank tracker",
     description:
-      "Read-only access to rank tracker configs and their latest results. With `trackerId`, returns config + a page of latest snapshots (pinned keywords first), including `trackingKeywordId` for removals and pins, `pinned`, and `googleSerpUrl`, a live Google search for the tracked keyword, language, country, and city. Use offset/limit to read additional keywords. Without it, lists all trackers in the project. Uses no credits. Use create_rank_tracker when no tracker exists; then use add_rank_tracking_keywords, remove_rank_tracking_keywords, pin_rank_tracking_keywords, estimate_rank_tracker_cost, or run_rank_tracker to manage it. `lastCheckedAt` shows position freshness. A null position means the domain was not found in the results the check returned, which can be fewer than `serpDepth`, so it does not prove the domain ranks below `serpDepth`.",
+      "Read-only access to rank tracker configs and their latest results. With `trackerId`, returns config + a page of latest snapshots (pinned keywords first), including `trackingKeywordId` for removals and pins, `pinned`, and `googleSerpUrl`, a live Google search for the tracked keyword, language, country, and city. Use offset/limit to read additional keywords. Without it, lists all trackers in the project. Uses no credits. Use create_rank_tracker when no tracker exists; then use add_rank_tracking_keywords, remove_rank_tracking_keywords, pin_rank_tracking_keywords, estimate_rank_tracker_cost, or run_rank_tracker to manage it. `lastCheckedAt` shows position freshness. A null position means the domain was not found in the results the check returned, which can be fewer than `serpDepth`, so it does not prove the domain ranks below `serpDepth`. `localPackPosition` is the place in the map pack (matched by domain or business name; null = not in it), `aiOverview` says whether the AI Overview mentions the business and links the domain (null = no AI Overview loaded on that page). Both are read off the same results page at no extra cost and are missing on snapshots from before they were recorded.",
     inputSchema,
     outputSchema: z
       .object({

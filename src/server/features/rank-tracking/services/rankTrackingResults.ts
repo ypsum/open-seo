@@ -1,6 +1,7 @@
 import { RankTrackingRepository } from "@/server/features/rank-tracking/repositories/RankTrackingRepository";
 import { toRankTrackingTimestamp } from "@/server/features/rank-tracking/rankTrackingTimestamps";
 import { AppError } from "@/server/lib/errors";
+import { decodeSerpExtras } from "@/server/lib/dataforseo/serpExtras";
 import type { ComparePeriod } from "@/types/schemas/rank-tracking-search";
 import type {
   RankTrackingDeviceResult,
@@ -179,10 +180,17 @@ function toDeviceResult(
   snapshot: SnapshotRow,
   previousPosition: number | null,
 ): RankTrackingDeviceResult {
+  const extras = decodeSerpExtras(snapshot.serpFeatures);
   return {
     position: snapshot.position,
     previousPosition,
     rankingUrl: snapshot.url,
     serpFeatures: parseSerpFeatures(snapshot.serpFeatures),
+    ...(extras
+      ? {
+          localPackPosition: extras.localPackPosition,
+          aiOverview: extras.aiOverview,
+        }
+      : {}),
   };
 }

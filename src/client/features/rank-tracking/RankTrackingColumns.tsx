@@ -16,6 +16,7 @@ import {
   VolumeCell,
 } from "./RankTrackingTableParts";
 import type { SelectionAnchor } from "@/client/components/table/tableSelection";
+import { SerpPresenceTags } from "./SerpPresenceTags";
 
 export const RANK_TRACKING_HEADER_CLASS =
   "text-xs uppercase tracking-wide text-muted-foreground";
@@ -239,9 +240,14 @@ function makeSerpColumn(
       </span>
     ),
     cell: ({ row }) => {
-      const features = row.original[device].serpFeatures;
-      if (features.length === 0) return null;
-      return <SerpFeatureTags features={features} />;
+      const result = row.original[device];
+      if (result.serpFeatures.length === 0) return null;
+      return (
+        <div className="flex flex-col gap-1">
+          <SerpPresenceTags result={result} />
+          <SerpFeatureTags features={result.serpFeatures} />
+        </div>
+      );
     },
   };
 }
