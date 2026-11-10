@@ -49,6 +49,7 @@ import {
   scanListingsTool,
 } from "@/server/mcp/tools/listing-tools";
 import { getRankCompetitorsTool } from "@/server/mcp/tools/get-rank-competitors";
+import { getKeywordGapTool } from "@/server/mcp/tools/get-keyword-gap";
 import { getBacklinkGapTool } from "@/server/mcp/tools/get-backlink-gap";
 import { addRankTrackingKeywordsTool } from "@/server/mcp/tools/add-rank-tracking-keywords";
 import { createRankTrackerTool } from "@/server/mcp/tools/create-rank-tracker";
@@ -345,6 +346,7 @@ export function createOpenSeoMcpServer(
   register(scanListingsTool);
   register(getListingScanTool);
   register(getRankCompetitorsTool);
+  register(getKeywordGapTool);
   register(getBacklinkGapTool);
   register(runRankTrackerTool);
   register(getRankedKeywordsTool);
